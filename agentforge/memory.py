@@ -2,6 +2,7 @@
 
 It is plain text stored as JSON. The model's weights never change; this file is all that learns.
 """
+import copy
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -65,6 +66,34 @@ class Memory:
 
     def skill_index(self):
         return "\n".join(f"- {s.name}: {s.when}" for s in self.skills) or "(none)"
+
+    def apply(self, action, payload):
+        """Return (new memory, directive) after one admissible edit. The original is untouched.
+
+        The directive is non-empty only for revise_plan, which changes the next attempt and not memory.
+        """
+        m, p = copy.deepcopy(self), payload
+        if action == "revise_plan":
+            return m, p["directive"]
+        if action == "create_skill":
+            m.skills.append(Skill(p["name"], p["when"], p["body"]))
+        elif action == "revise_skill":
+            skill = m.skill(p["name"])
+            skill.when, skill.body = p["when"], p["body"]
+        elif action == "refine_prompt":
+            if p["agent"] == GENERALIST:
+                m.generalist_prompt = p["prompt"]
+            else:
+                next(a for a in m.agents if a.name == p["agent"]).prompt = p["prompt"]
+        elif action == "create_agent":
+            m.agents.append(Agent(p["name"], p["description"], p["prompt"]))
+        elif action == "memory_note":
+            m.notes.append(Note(p["topic"], p["text"], p["generality"]))
+        return m, ""
+
+    def size(self):
+        """Total characters of learned text, a simple measure of how much memory has grown."""
+        return len(self.to_json())
 
     def to_json(self):
         return json.dumps(asdict(self), indent=2)

@@ -125,16 +125,20 @@ def describe_attempt(memory, task, digest, trace, history):
     return "\n\n".join(parts)
 
 
-def reflect(llm, memory, task, digest, trace, history=(), feedback=(), salt=""):
-    """One Reflect call. `feedback` carries guard refusals from earlier rounds (stage 4)."""
+def reflect(llm, memory, task, digest, trace, history=(), feedback=(), salt="", prior_probes=()):
+    """One Reflect call. `feedback` carries guard refusals from earlier rounds; `prior_probes`
+    carries the experiments already run, so a retry does not repeat them."""
     user = describe_attempt(memory, task, digest, trace, list(history))
+    if prior_probes:
+        user += "\n\nWHAT YOUR EXPERIMENTS SHOWED\n" + "\n".join(
+            f"ran:\n{p['code'][:600]}\noutput:\n{p['output'][:600]}" for p in prior_probes)
     if feedback:
         user += "\n\nYOUR EARLIER PROPOSALS WERE REFUSED\n" + "\n".join(f"- {f}" for f in feedback)
     messages = [{"role": "system", "content": _instructions()}, {"role": "user", "content": user}]
-    out = Reflection()
+    out = Reflection(probes=list(prior_probes))
     with Workdir() as wd:
         wd.write("solution.py", trace.solution or "")
-        for probe_round in range(MAX_PROBES):
+        for probe_round in range(0 if prior_probes else MAX_PROBES):
             # The first round must be a probe, so a diagnosis is never a pure guess.
             reply = llm.chat(messages, tools=PROBE, force_tool="run_python" if probe_round == 0 else None, salt=salt)
             messages.append(reply.message)

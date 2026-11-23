@@ -120,6 +120,7 @@ def cmd_run(args):
 def cmd_reflect(args):
     """Show the reflector's diagnosis of every failure in a saved run. Nothing is applied."""
     need_key()
+    from agentforge.guards import reflect_guarded
     from agentforge.llm import LLM, reflector_model
     from agentforge.memory import Memory
     from agentforge.reflector import SCOPES, reflect, summarize
@@ -140,22 +141,28 @@ def cmd_reflect(args):
         trace = Rollout(solution=row["solution"], notes=row.get("notes", []), plan=row["plan"], steps=row["steps"],
                         overflows=[i for i, s in enumerate(row["steps"]) if s["overflow"]])
         try:
-            r = reflect(llm, memory, tasks[row["task"]], row["digest"], trace)
+            if args.guards:
+                r, refusals = reflect_guarded(llm, memory, tasks[row["task"]], row["digest"], trace)
+            else:
+                r, refusals = reflect(llm, memory, tasks[row["task"]], row["digest"], trace), []
         except Exception as e:
             return {"task": row["task"], "family": row["family"], "error": f"{type(e).__name__}: {e}"}
-        return {"task": row["task"], "family": row["family"], "summary": summarize(r), **r.to_dict()}
+        return {"task": row["task"], "family": row["family"], "summary": summarize(r),
+                "refusals": refusals, **r.to_dict()}
 
     print(f"Reflecting on {len(failed)} failed tasks from the '{args.run}' run ({llm.model})...")
     with ThreadPoolExecutor(args.workers) as pool:
         out = list(pool.map(one, failed))
     good = [r for r in out if "error" not in r]
-    saved = folder / f"reflections-{llm.model}.jsonl"
+    saved = folder / f"reflections-{'guarded-' if args.guards else ''}{llm.model}.jsonl"
     saved.write_text("".join(json.dumps(r) + "\n" for r in out))
     for r in good if not args.quiet else []:
         print(f"\n{r['task']} ({r['family']})  ->  {r['scope'] or '?'} / {r['action']}"
               f"{'' if r['well_formed'] else '   [not a valid scope or action]'}")
         print(f"  diagnosis: {r['diagnosis']}")
-        print(f"  proposed {r['summary'][:args.width]}")
+        for x in r["refusals"]:
+            print(f"  REFUSED {x['action']} by {x['guard']}: {x['reason']}")
+        print(f"  {'accepted' if args.guards else 'proposed'} {r['summary'][:args.width]}")
 
     print(f"\n{'family':<13}" + "".join(f"{s[:13]:>15}" for s in SCOPES) + f"{'other':>8}")
     for fam in FAMILY_LABELS:
@@ -176,7 +183,15 @@ def cmd_reflect(args):
     print("\nActions proposed: " + ", ".join(f"{sum(r['action'] == a for r in good)} {a}" for a in actions))
     ghosts = [r["task"] for r in good if r["action"] == "revise_skill" and not memory.skill(r["payload"].get("name"))]
     print(f"{len(ghosts)} proposals revise a skill that does not exist.")
-    print(f"If every proposal were accepted: {len(new_skills)} new skills under {len(names)} different names; "
+    if args.guards:
+        from collections import Counter
+
+        refused = Counter(x["guard"] for r in good for x in r["refusals"])
+        print(f"Guards: {sum(not r['refusals'] for r in good)} of {len(good)} accepted first time; "
+              f"{sum(bool(r['refusals']) and r['action'] != 'no_change' for r in good)} accepted after a rewrite; "
+              f"{sum(bool(r['refusals']) and r['action'] == 'no_change' for r in good)} given up as no change.")
+        print("Refusals by guard: " + (", ".join(f"{n} {g}" for g, n in refused.most_common()) or "none"))
+    print(f"If every {'accepted ' if args.guards else ''}proposal were {'applied' if args.guards else 'accepted'}: {len(new_skills)} new skills under {len(names)} different names; "
           f"{len(leaks)} proposals name the task's own function; {len(mismatched)} use an action their scope "
           f"does not allow; {sum(not r['well_formed'] for r in good)} are malformed; the longest is {longest:,} characters.")
     errors = [r for r in out if "error" in r]
@@ -220,6 +235,8 @@ def main(argv=None):
     p.add_argument("--limit", type=int)
     p.add_argument("--width", type=int, default=260, help="characters of each proposal to print")
     p.add_argument("--quiet", action="store_true", help="print only the summary")
+    p.add_argument("--guards", action="store_true", help="check each proposal with the guards and let the "
+                   "reflector rewrite refused ones")
     p.add_argument("--model", help="reflector model (default: AGENTFORGE_REFLECTOR_MODEL)")
     p.add_argument("--workers", type=int, default=6)
     p.add_argument("--max-tokens-total", type=int, default=2_000_000)

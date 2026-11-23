@@ -23,8 +23,8 @@ The paper says this beats letting the AI rewrite its own notebook however it lik
 | 1. The problem | A made-up library with unwritten rules, 48 tasks, a grader, an untrained agent | Done |
 | 2. Memory | The three-section notebook | Done |
 | 3. Scoped reflection | A reviewer that assigns each failure to one section | Done |
-| 4. Guards | The rule-checker that can refuse an edit | Next |
-| 5. Training | The learning loop, and the anything-goes version | Not started |
+| 4. Guards | The rule-checker that can refuse an edit | Done |
+| 5. Training | The learning loop, and the anything-goes version | Next |
 | 6. The experiment | The three-way comparison and a results page | Not started |
 
 ## Setup
@@ -45,6 +45,7 @@ Commands so far:
 | `python -m agentforge run` | Runs the agent team on every task with an empty notebook |
 | `python -m agentforge run --memory examples/fact.json` | The same, with a notebook loaded from a file |
 | `python -m agentforge reflect --run seed` | Has the reviewer diagnose every training failure in a saved run. Nothing is changed |
+| `python -m agentforge reflect --run seed --guards` | The same, with each proposal checked by the guards and refused ones sent back for a rewrite |
 | `pytest` | Runs the automated checks (no model calls) |
 
 The agent's code runs on your machine in a throwaway folder with a timeout. That is isolation for convenience, not a security boundary.
@@ -168,6 +169,56 @@ Examples from the stronger reviewer:
 - "Found the real cause" is my own reading of 15 diagnoses per reviewer, not an automatic score. An automatic keyword score was tried and dropped because it counted wrong diagnoses as right.
 - The first version of the reviewer was run once on all 34 failures, including held-out tasks, and its instructions were then changed. The changes were general (experiment before diagnosing; add versus revise) and say nothing about `kiln`, but strictly the held-out tasks were looked at once. The reviewer now only ever sees training tasks.
 - A third model, `gpt-6-luna`, could not be tried because it does not support this project's way of calling tools.
+
+### Stage 4: the guards
+
+**What was built.** Five guards, written as ordinary code with no AI involved. Each proposed edit is checked against them in order. The first one it breaks refuses it, and the reason goes back to the reviewer, which may try again. After three refusals the outcome is "no change".
+
+| Guard | What it refuses |
+|---|---|
+| Scope and action | An edit the diagnosed failure type does not allow, or one that is incomplete |
+| Change of strategy | A third fix in a row at the same level of memory, after two that did not work |
+| No leakage | A lesson that names the task's own function or copies its wording |
+| Prompt preservation | A rewrite that keeps less than 60% of an agent's instructions, or that edits an agent that did not take part |
+| Bounded growth | Anything over the size limits, a revision of something that does not exist, a duplicate name, or a new specialist that is not really a specialisation |
+
+Size limits, scaled down from the paper's for this small task set: 6 agents, 20 skills, 15 notes, 2,000 characters per agent's instructions, 1,200 per skill.
+
+The memory also gained the ability to apply an accepted edit, producing a new version and leaving the old one untouched.
+
+**What was run.** The same 15 training failures as stage 3, with the stronger reviewer, this time with every proposal checked.
+
+**Result.**
+
+| Outcome | Count |
+|---|---|
+| Accepted first time | 11 of 15 |
+| Refused, rewritten, then accepted | 4 of 15 |
+| Given up as "no change" | 0 of 15 |
+
+There were 5 refusals in total: 3 by bounded growth (revising a skill that does not exist), 1 by no leakage, 1 by prompt preservation.
+
+Three of the refusals, as they happened:
+
+- **Pointing at nothing.** Proposal: revise the skill `shelf-membership-check`. Refused: "There is no skill named 'shelf-membership-check' to revise. Use create_skill." The reviewer resubmitted it as a new skill and it was accepted.
+- **Erasing instructions.** Proposal: replace the generalist's instructions with one paragraph. Refused: "The new prompt keeps 0% of the existing prompt's sentences; at least 60% must be kept word for word. Add to the prompt instead of replacing it." The reviewer dropped the idea and proposed a skill instead.
+- **Copying the task.** Proposal: a skill whose text named the task's own function, `combine`. Refused for leakage. Its rewrite was refused too, for revising a skill that does not exist. On the third try the reviewer fell back to a one-off hint for the next attempt, which leaves memory untouched.
+
+**Findings.**
+
+- The guards caught every problem of form found in stage 3. After guarding, no accepted edit named its task's function, pointed at something missing, or erased an agent's instructions.
+- Refusal reasons work as instructions. All four refused proposals were turned into admissible ones, and none had to be abandoned.
+- A refusal can change the kind of fix, not only its wording. Twice the reviewer switched to a different, smaller edit after being refused.
+- The guards do not check truth, and it shows. Several accepted lessons are wrong or beside the point. The merging lessons still miss the real rule, and one accepted shelf lesson says a lookup "can return a slot index even when the item is not present", which misreads what was observed. All of them passed, because they are well-formed, general and small.
+- So the guards limit how much damage a bad lesson can do, and the re-run decides whether a lesson helped. That is the job of stage 5.
+
+**What this shows about the paper.** This is Section 3.2.2 and Algorithm 3. The paper's point is that these limits are enforced by code, so they hold whichever model is proposing edits. The paper also states the weakness seen here: an accepted edit stays in memory even if the task still fails afterwards, so unhelpful entries can pile up.
+
+**Caveats.**
+
+- Each failure here was reviewed against an empty notebook, independently. In real training the notebook fills as it goes, so later failures meet earlier lessons. The change-of-strategy guard needs a history of failed fixes, so it was exercised only by the automated checks, not by this run.
+- The leakage limit is 8 copied words, not the paper's 15, because these task descriptions are only one or two sentences long.
+- The paper's guard thresholds came from a summarised reading of its appendix and are unconfirmed.
 
 ## How it differs from the paper
 
