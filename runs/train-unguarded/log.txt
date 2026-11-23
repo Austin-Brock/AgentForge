@@ -1,0 +1,26 @@
+Training the 'unguarded' version on 18 tasks, up to 3 revisions each (workers: gpt-5.4-nano, reviewer: gpt-5.4-mini)...
+ 1/18 mu1    pass +2 note(s)
+ 2/18 win1   fail -> [2 edit(s): revise_plan, memory_note] -> fail -> [3 edit(s): revise_plan, memory_note, create_skill] -> pass +1 note(s)
+ 3/18 slot1  fail -> [2 edit(s): revise_plan, memory_note] -> pass +1 note(s)
+ 4/18 bp1    pass +1 note(s)
+ 5/18 mg1    fail -> [1 edit(s): create_skill] -> fail -> [3 edit(s): revise_plan, revise_skill, memory_note] -> pass +2 note(s)
+ 6/18 sku1   pass +2 note(s)
+ 7/18 mu4    pass +1 note(s)
+ 8/18 win4   pass +1 note(s)
+ 9/18 slot4  pass +1 note(s)
+10/18 bp4    fail -> [3 edit(s): revise_plan, create_skill, memory_note] -> pass +1 note(s)
+11/18 mg4    pass +2 note(s)
+12/18 sku4   pass +1 note(s)
+13/18 mu7    fail -> [0 edit(s): no_change] -> fail -> [2 edit(s): revise_plan, memory_note] -> fail -> [3 edit(s): revise_skill, revise_plan, memory_note] -> fail +2 note(s)
+14/18 win7   pass +1 note(s)
+15/18 slot7  fail -> [2 edit(s): create_skill, revise_plan] -> pass +1 note(s)
+16/18 bp7    pass +2 note(s)
+17/18 mg7    fail -> [3 edit(s): revise_plan, create_skill, memory_note] -> fail -> [3 edit(s): revise_skill, revise_plan, memory_note] -> fail -> [3 edit(s): revise_plan, create_skill, memory_note] -> fail +2 note(s)
+18/18 sku7   pass +2 note(s)
+
+Tasks: 11 passed first try, 5 passed after a revision, 2 never passed (31 executions in all).
+Reviews: 13, producing 30 edits (6 create_skill, 10 memory_note, 11 revise_plan, 3 revise_skill); 1 reviews changed nothing.
+Planning notes added at task end: 26.
+Final memory: 6 skills, 36 notes, 0 specialists, 16,900 characters. Saved to runs/train-unguarded/memory.json
+Workers tokens: 185,305 in, 36,664 out over 214 calls (0 from cache).
+Reviewer tokens: 224,255 in, 10,385 out over 70 calls (0 from cache).

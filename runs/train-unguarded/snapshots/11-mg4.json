@@ -1,0 +1,123 @@
+{
+  "generalist_prompt": "You are a Python programmer solving a task that uses the kiln library. You can run code with run_python in a sandbox where `import kiln` works. When your work on the step is ready, call submit.",
+  "notes": [
+    {
+      "topic": "simple utility tasks",
+      "text": "For small single-function modules, keep the plan to definition, implementation, and a quick consistency check. A generalist is usually sufficient unless the task explicitly involves specialized libraries or tricky data handling.",
+      "generality": "general"
+    },
+    {
+      "topic": "numeric inputs",
+      "text": "When a task mentions floating-point values but the storage API expects integers, decide the conversion rule up front and apply it consistently at the boundary. Verify the chosen representation against the target API\u2019s documented types before writing extra logic.",
+      "generality": "general"
+    },
+    {
+      "topic": "kiln-ledger-between-boundary",
+      "text": "kiln.Ledger.between(start, end) is start-inclusive and end-exclusive. For inclusive date ranges, filter ledger.entries() manually with <= on both bounds.",
+      "generality": "domain_specific"
+    },
+    {
+      "topic": "kiln-ledger-between-boundary",
+      "text": "kiln.Ledger.between(start, end) is start-inclusive and end-exclusive (`start <= date < end`). For inclusive date ranges, always filter `ledger.entries()` manually with `first_day <= date <= last_day` rather than delegating to `between`.\n",
+      "generality": "domain_specific"
+    },
+    {
+      "topic": "boundary semantics",
+      "text": "When a helper method sounds like a range query, verify whether both endpoints are included before delegating to it. If the contract is inclusive on both ends and the API is not, filter explicitly instead of compensating with an ad hoc endpoint shift.",
+      "generality": "general"
+    },
+    {
+      "topic": "kiln-shelf-first-slot-indexing",
+      "text": "For kiln.Shelf, the first stored item is in slot 1, not slot 0. Slot 0 is not the first slot and may remain empty/unused even when items are present.",
+      "generality": "domain_specific"
+    },
+    {
+      "topic": "1-based storage slots",
+      "text": "If an API describes numbered slots but tests refer to the \u201cfirst\u201d stored item, confirm whether numbering starts at 1 rather than 0. When a container has a size property and direct slot access, treat slot 0 as potentially unused unless the documentation explicitly says otherwise.",
+      "generality": "domain_specific"
+    },
+    {
+      "topic": "integer-rate bridge",
+      "text": "When a helper accepts an integer rate but the caller supplies a fractional percent, convert once at the API boundary and keep the rest of the logic in integer space. Prefer a direct linear mapping to the helper\u2019s expected units rather than rounding intermediate percentages multiple times.",
+      "generality": "general"
+    },
+    {
+      "topic": "kiln-merge-duplicates",
+      "text": "kiln.merge does not reliably sum duplicate keys across arbitrary inputs; it preserves one record per key based on its own traversal and may ignore later duplicates, especially when one list is empty or inputs are mixed order. For tasks that require summed quantities, aggregate explicitly before sorting.",
+      "generality": "domain_specific"
+    },
+    {
+      "topic": "verify helper semantics before delegating",
+      "text": "If a helper\u2019s contract is underspecified for duplicates, ordering, or empty inputs, do not assume it will preserve or normalize records correctly. For small transformations, prefer an explicit local implementation over chaining the helper and correcting its output afterward.",
+      "generality": "general"
+    },
+    {
+      "topic": "avoid self-referential checks",
+      "text": "Lightweight sanity checks inside a tiny function should be one-off and literal-based. Do not validate a function by calling it again on derived inputs unless you are certain the call graph cannot loop back into the same logic.",
+      "generality": "general"
+    },
+    {
+      "topic": "normalize user input at boundaries",
+      "text": "When an API expects a canonical identifier but callers may supply human-entered text, normalize exactly once at the boundary and pass the normalized value through unchanged afterward. Avoid re-normalizing intermediate results or mixing raw and canonical forms in the same branch.",
+      "generality": "general"
+    },
+    {
+      "topic": "direct lookup helpers",
+      "text": "For tiny wrappers around a single lookup-like helper, prefer the shortest path from input normalization to the underlying query. Extra branching or fallback logic usually adds risk without improving coverage unless the contract explicitly mentions missing keys or aliases.",
+      "generality": "general"
+    },
+    {
+      "topic": "extremum over ledger entries",
+      "text": "For single-value summary tasks over a collection of records, compute the result directly from the collection\u2019s reported entries rather than from derived aggregates. When the requested result is a maximum or minimum amount, be explicit about whether the comparison is on raw values or absolute magnitudes before coding.",
+      "generality": "general"
+    },
+    {
+      "topic": "inclusive date ranges",
+      "text": "When a library offers a half-open date range helper but the required result is inclusive of both endpoints, avoid endpoint arithmetic unless the contract is explicit; filter the underlying records directly with a closed interval check. This is especially important when the end date is the last day of a calendar period.",
+      "generality": "domain_specific"
+    },
+    {
+      "topic": "lookup sentinel handling",
+      "text": "When normalizing the return value of a lookup helper, treat the explicit not-found sentinel first and keep the conversion to a public index in one place. Avoid assuming non-positive values are always invalid unless the helper contract guarantees that distinction.",
+      "generality": "general"
+    },
+    {
+      "topic": "kiln fee rate scale",
+      "text": "kiln.fee does not take raw percent values. Example behavior shows fee(10000, 10)=10 and fee(100, 100)=1, so the helper rate is basis-points-like: percent must be multiplied by 100 before calling kiln.fee. For totals, compute each item's fee separately with the converted rate and sum the results.",
+      "generality": "domain_specific"
+    },
+    {
+      "topic": "rate conversion boundary",
+      "text": "When an external helper uses a different integer scale than the public API, convert once at the boundary and keep all later arithmetic in the helper\u2019s native units. This avoids double-rounding and makes per-item computations consistent.",
+      "generality": "general"
+    },
+    {
+      "topic": "small helper delegation",
+      "text": "For tiny data-shaping tasks, prefer a direct local implementation over delegating to a helper whose duplicate-handling or ordering semantics are not explicitly guaranteed. If a helper is used, verify its edge cases first and avoid wrapping it with corrective logic that depends on the helper being correct.",
+      "generality": "general"
+    },
+    {
+      "topic": "ordered dict inputs",
+      "text": "When a caller supplies a mapping and the problem statement cares about arrival order, preserve the mapping iteration order only at the boundary and do not re-sort unless the output contract requires it. If the final result must be sorted, sort once at the end from the normalized records.",
+      "generality": "general"
+    }
+  ],
+  "agents": [],
+  "skills": [
+    {
+      "name": "kiln-ledger-between-boundary",
+      "when": "When a task needs inclusive ledger date ranges from kiln.Ledger.",
+      "body": "Do not use `ledger.between(start, end)` for inclusive end dates because kiln implements it as start-inclusive and end-exclusive. Instead, iterate `ledger.entries()` and return `[entry for entry in ledger.entries() if first_day <= entry[0] <= last_day]`. Preserve the original tuple shape/order and do not reorder entries."
+    },
+    {
+      "name": "no-recursive-self-checks",
+      "when": "When adding lightweight consistency checks to a small function, avoid invoking external helpers whose behavior has not been verified for all edge cases; use direct literals or guarded one-off checks instead.",
+      "body": "For small utility functions, keep any example checks independent of the function\u2019s core dependency chain. If the implementation delegates to another helper, verify that helper separately before using it in assertions, or omit assertions entirely unless they are pure and local. Never add checks that can mask a dependency bug or create extra assumptions about undocumented helper behavior."
+    },
+    {
+      "name": "integer-rate bridge",
+      "when": "When a helper accepts an integer rate but the caller supplies a percent, convert percent to the helper's unit scale once at the API boundary and keep the rest of the logic in integer space.",
+      "body": "When a helper documents an integer rate and the public API uses percent, determine the helper's unit scale from examples before coding. Convert exactly once at the boundary using the inferred linear mapping (for kiln.fee, percent -> percent * 100), then call the helper on each item independently and sum the returned integers. Do not pass raw percent values through unchanged unless examples confirm the scales are identical."
+    }
+  ]
+}

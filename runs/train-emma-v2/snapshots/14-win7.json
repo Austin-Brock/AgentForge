@@ -1,0 +1,113 @@
+{
+  "generalist_prompt": "You are a Python programmer solving a task that uses the kiln library. You can run code with run_python in a sandbox where `import kiln` works. When your work on the step is ready, call submit.",
+  "notes": [
+    {
+      "topic": "single-step implementation",
+      "text": "For small API-wrapper tasks, use one generalist step to draft the module skeleton, then one generalist step to fill in the exact behavior and edge cases, and finish with a single code delivery step. Keep the steps broad unless the spec has multiple independent behaviors or validation rules.",
+      "generality": "general"
+    },
+    {
+      "topic": "inclusive date ranges",
+      "text": "When a library method returns a date slice with surprising endpoint behavior, verify inclusivity with single-day and middle-range cases before deciding whether to adjust the bounds or filter manually. Prefer the simplest route that preserves both endpoints exactly as specified.",
+      "generality": "general"
+    },
+    {
+      "topic": "slot-numbering sanity check",
+      "text": "When a task references ordered positions in a container-like API, verify whether indexing is zero-based or one-based with a tiny probe before coding. Conflicting assumptions about slot numbering are a common cause of repeated failures.",
+      "generality": "general"
+    },
+    {
+      "topic": "wrapper helpers",
+      "text": "For tiny wrapper functions around a helper API, verify the helper\u2019s input scale with a quick probe before coding. Repeated failures often come from assuming a conventional interpretation for a numeric argument that is actually in a different unit or scaling.",
+      "generality": "general"
+    },
+    {
+      "topic": "validate-helper-behavior",
+      "text": "When a wrapper depends on a library helper, confirm the helper\u2019s exact output shape and ordering with a minimal probe before layering additional logic. Repeated failures can come from assuming the helper already satisfies a hidden postcondition such as sorting or full normalization.",
+      "generality": "general"
+    },
+    {
+      "topic": "check-empty-input-cases",
+      "text": "For small transformation tasks, include at least one empty-input and one mixed-order test in the validation plan. These edge cases often expose whether the implementation relies on the helper too directly or misses a required normalization step.",
+      "generality": "general"
+    },
+    {
+      "topic": "signed-value wrappers",
+      "text": "When a small wrapper reads a numeric field from a helper object, verify whether the stored value is already in final units before applying any conversion. A common failure mode is double-scaling or assuming a conventional unit that the API does not use.",
+      "generality": "general"
+    },
+    {
+      "topic": "half-open date ranges",
+      "text": "When a helper slices by dates, treat the end bound as potentially exclusive unless verified with a boundary case. For annual totals, prefer using the first day of the next period as the upper bound rather than the last day of the current period.",
+      "generality": "general"
+    },
+    {
+      "topic": "boundary verification",
+      "text": "For wrappers around date-based collections, always validate both the first and last in-range dates with tiny probes before coding the final slice. Many one-off failures come from getting exactly one endpoint wrong while the interior cases still pass.",
+      "generality": "general"
+    },
+    {
+      "topic": "helper return ambiguity",
+      "text": "When repeated failures suggest a helper returns a sentinel value that overlaps with a valid in-range result, verify the missing-case encoding directly before wrapping it. Do not assume the helper\u2019s raw output can be returned unchanged just because it looks like an index.",
+      "generality": "general"
+    },
+    {
+      "topic": "probe first-slot collision",
+      "text": "If an ordered container\u2019s lookup can legitimately return the first position for a real hit, include an absent-case probe that distinguishes a true zero from a default or fallback zero. This is a common source of false positives in small wrapper functions.",
+      "generality": "general"
+    },
+    {
+      "topic": "helper-unit verification",
+      "text": "When a wrapper calls a numeric helper repeatedly, confirm the helper\u2019s unit scale with a tiny known-value probe before writing any conversion logic. Repeated failures often come from trusting a familiar convention instead of the library\u2019s actual arithmetic.",
+      "generality": "general"
+    },
+    {
+      "topic": "dict-order normalization",
+      "text": "When a wrapper must preserve an input mapping\u2019s encounter order, build the helper\u2019s record list directly from the mapping\u2019s iteration order and avoid any extra sorting or reordering unless the API explicitly requires it. A hidden failure mode is that a \u201ccleanup\u201d step can silently change the semantics even when the final output is supposed to be key-sorted already.",
+      "generality": "general"
+    },
+    {
+      "topic": "typed-key normalization",
+      "text": "When inputs come from a human-entered identifier list, normalize each candidate with the same canonicalization helper used by the backing store before comparison, but preserve the original user-entered value in the returned result when the spec asks for exact entries. This avoids accidentally returning normalized forms instead of the original data.",
+      "generality": "general"
+    },
+    {
+      "topic": "preserve input order",
+      "text": "For filters over a provided sequence, validate that the output keeps the original sequence order and does not de-duplicate unless explicitly required. A good sanity check is to mix repeated values and varied spacing/casing to ensure the predicate is applied per entry rather than per unique normalized key.",
+      "generality": "general"
+    }
+  ],
+  "agents": [],
+  "skills": [
+    {
+      "name": "ledger-between-exclusive-bounds",
+      "when": "when a task needs a date slice from kiln.Ledger",
+      "body": "kiln.Ledger.between(start, end) returns entries with dates in the half-open interval [start, end): the start date is included and the end date is excluded. To cover a calendar month, use the first day of that month as start and the first day of the next month as end; for December, the next-month boundary is January 1 of the following year. Do not subtract a day from the end boundary.\nExample: between(2026-01-01, 2026-02-01) includes all January 1-31 entries."
+    },
+    {
+      "name": "shelf-zero-based-indexing",
+      "when": "when a task reads or writes kiln.Shelf slots",
+      "body": "kiln.Shelf uses zero-based slot numbers. `get(0)` and `put(0, item)` refer to the first slot. `find(item)` returns `0` both for an item in the first slot and when the item is not found, so code using `find` must not treat `0` as a guaranteed hit or as a guaranteed miss without additional handling."
+    },
+    {
+      "name": "shelf-first-slot-access",
+      "when": "when a task needs the item in the first logical slot of a kiln.Shelf",
+      "body": "kiln.Shelf slot numbering is zero-based, and the first slot is slot 0. Use shelf.get(0) to read that slot; it returns the item stored there or None if the slot is empty. Do not search for the first non-empty slot unless the task explicitly asks for it."
+    },
+    {
+      "name": "kiln-fee-per-thousand",
+      "when": "when a task uses kiln.fee for percentage-like calculations",
+      "body": "kiln.fee(amount, rate) computes floor(amount * rate / 100) and returns an int. Pass the rate exactly as the percent value expected by kiln.fee; do not convert it to per-thousand units or rescale it unless the task explicitly says to. Example: a 10 rate on 100 yields 10, and a 1 rate on 999 yields 9."
+    },
+    {
+      "name": "kiln-merge-inner-only",
+      "when": "when a task combines two lists of keyed records with the merge function",
+      "body": "The merge function only works correctly when both input lists are already sorted by key. It returns a key-sorted list and combines equal keys by summing their quantities; it does not rescue unsorted input on either side. Before calling it, convert any mapping or other unordered source into a key-sorted list of (key, qty) records, then use the merge result directly without re-sorting."
+    },
+    {
+      "name": "ledger-entry-amount-direct",
+      "when": "when a task reads monetary amounts from kiln.Ledger entries",
+      "body": "kiln.Ledger entries expose the stored amount directly in the third tuple field; that value is the ledger amount itself and should be summed as-is. If the task asks for dollars, convert the final total to dollars before returning, rather than changing the month filtering logic. Example: sum the matching entry amounts first, then apply the task\u2019s required unit conversion to the total only."
+    }
+  ]
+}

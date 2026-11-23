@@ -1,0 +1,12 @@
+{
+  "generalist_prompt": "You are a Python programmer solving a task that uses the kiln library. You can run code with run_python in a sandbox where `import kiln` works. When your work on the step is ready, call submit.",
+  "notes": [
+    {
+      "topic": "single-step implementation",
+      "text": "For small API-wrapper tasks, use one generalist step to draft the module skeleton, then one generalist step to fill in the exact behavior and edge cases, and finish with a single code delivery step. Keep the steps broad unless the spec has multiple independent behaviors or validation rules.",
+      "generality": "general"
+    }
+  ],
+  "agents": [],
+  "skills": []
+}

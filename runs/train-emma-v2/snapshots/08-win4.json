@@ -1,0 +1,83 @@
+{
+  "generalist_prompt": "You are a Python programmer solving a task that uses the kiln library. You can run code with run_python in a sandbox where `import kiln` works. When your work on the step is ready, call submit.",
+  "notes": [
+    {
+      "topic": "single-step implementation",
+      "text": "For small API-wrapper tasks, use one generalist step to draft the module skeleton, then one generalist step to fill in the exact behavior and edge cases, and finish with a single code delivery step. Keep the steps broad unless the spec has multiple independent behaviors or validation rules.",
+      "generality": "general"
+    },
+    {
+      "topic": "inclusive date ranges",
+      "text": "When a library method returns a date slice with surprising endpoint behavior, verify inclusivity with single-day and middle-range cases before deciding whether to adjust the bounds or filter manually. Prefer the simplest route that preserves both endpoints exactly as specified.",
+      "generality": "general"
+    },
+    {
+      "topic": "slot-numbering sanity check",
+      "text": "When a task references ordered positions in a container-like API, verify whether indexing is zero-based or one-based with a tiny probe before coding. Conflicting assumptions about slot numbering are a common cause of repeated failures.",
+      "generality": "general"
+    },
+    {
+      "topic": "wrapper helpers",
+      "text": "For tiny wrapper functions around a helper API, verify the helper\u2019s input scale with a quick probe before coding. Repeated failures often come from assuming a conventional interpretation for a numeric argument that is actually in a different unit or scaling.",
+      "generality": "general"
+    },
+    {
+      "topic": "validate-helper-behavior",
+      "text": "When a wrapper depends on a library helper, confirm the helper\u2019s exact output shape and ordering with a minimal probe before layering additional logic. Repeated failures can come from assuming the helper already satisfies a hidden postcondition such as sorting or full normalization.",
+      "generality": "general"
+    },
+    {
+      "topic": "check-empty-input-cases",
+      "text": "For small transformation tasks, include at least one empty-input and one mixed-order test in the validation plan. These edge cases often expose whether the implementation relies on the helper too directly or misses a required normalization step.",
+      "generality": "general"
+    },
+    {
+      "topic": "signed-value wrappers",
+      "text": "When a small wrapper reads a numeric field from a helper object, verify whether the stored value is already in final units before applying any conversion. A common failure mode is double-scaling or assuming a conventional unit that the API does not use.",
+      "generality": "general"
+    },
+    {
+      "topic": "half-open date ranges",
+      "text": "When a helper slices by dates, treat the end bound as potentially exclusive unless verified with a boundary case. For annual totals, prefer using the first day of the next period as the upper bound rather than the last day of the current period.",
+      "generality": "general"
+    },
+    {
+      "topic": "boundary verification",
+      "text": "For wrappers around date-based collections, always validate both the first and last in-range dates with tiny probes before coding the final slice. Many one-off failures come from getting exactly one endpoint wrong while the interior cases still pass.",
+      "generality": "general"
+    }
+  ],
+  "agents": [],
+  "skills": [
+    {
+      "name": "ledger-between-exclusive-bounds",
+      "when": "when a task needs a date slice from kiln.Ledger",
+      "body": "kiln.Ledger.between(start, end) returns entries dated from start up to but not including end. For a full calendar year, use January 1 of the year as start and January 1 of the next year as end; do not add or subtract a day manually, and do not re-filter dates unless you need a different interval."
+    },
+    {
+      "name": "shelf-zero-based-indexing",
+      "when": "when a task reads or writes kiln.Shelf slots",
+      "body": "kiln.Shelf uses zero-based slot numbers. `get(0)` and `put(0, item)` refer to the first slot, and `find(item)` returns the zero-based slot index of the matching item. Use slot 0 for the first slot; do not shift indices by 1."
+    },
+    {
+      "name": "shelf-first-slot-access",
+      "when": "when a task needs the item in the first logical slot of a kiln.Shelf",
+      "body": "kiln.Shelf slot numbering is zero-based, and the first slot is slot 0. Use shelf.get(0) to read that slot; it returns the item stored there or None if the slot is empty. Do not search for the first non-empty slot unless the task explicitly asks for it."
+    },
+    {
+      "name": "kiln-fee-per-thousand",
+      "when": "when a task uses kiln.fee for percentage-like calculations",
+      "body": "kiln.fee(amount, rate) computes floor(amount * rate / 1000) and returns an int. Pass the rate value in the scale the task specifies; do not pre-convert a percentage unless the task explicitly says kiln.fee expects percent-to-per-thousand conversion. Example: if the intended rate is 8.25%, call kiln.fee with 8.25, not 82.5."
+    },
+    {
+      "name": "kiln-merge-inner-only",
+      "when": "when a task combines two lists of keyed records with kiln.merge",
+      "body": "kiln.merge returns the union of keys from both inputs. If a key appears in both lists, it sums their quantities; if a key appears in only one list, that record is kept unchanged. If one input is empty, the other input is returned unchanged. Example: [('a',1),('b',2)] merged with [('b',3),('c',4)] yields [('a',1),('b',5),('c',4)]."
+    },
+    {
+      "name": "ledger-entry-amount-direct",
+      "when": "when a task reads amounts from kiln.Ledger entries",
+      "body": "kiln.Ledger.entries() returns a list of (date, account, amount) tuples, and the amount is the exact value passed to post(); it is not a cents value and must not be divided or rescaled. To find the largest entry, compare the third tuple element by numeric value and return it as a float."
+    }
+  ]
+}

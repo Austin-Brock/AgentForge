@@ -1,0 +1,38 @@
+{
+  "generalist_prompt": "You are a Python programmer solving a task that uses the kiln library. You can run code with run_python in a sandbox where `import kiln` works. When your work on the step is ready, call submit.",
+  "notes": [
+    {
+      "topic": "single-step implementation",
+      "text": "For small API-wrapper tasks, use one generalist step to draft the module skeleton, then one generalist step to fill in the exact behavior and edge cases, and finish with a single code delivery step. Keep the steps broad unless the spec has multiple independent behaviors or validation rules.",
+      "generality": "general"
+    },
+    {
+      "topic": "inclusive date ranges",
+      "text": "When a library method returns a date slice with surprising endpoint behavior, verify inclusivity with single-day and middle-range cases before deciding whether to adjust the bounds or filter manually. Prefer the simplest route that preserves both endpoints exactly as specified.",
+      "generality": "general"
+    },
+    {
+      "topic": "slot-numbering sanity check",
+      "text": "When a task references ordered positions in a container-like API, verify whether indexing is zero-based or one-based with a tiny probe before coding. Conflicting assumptions about slot numbering are a common cause of repeated failures.",
+      "generality": "general"
+    }
+  ],
+  "agents": [],
+  "skills": [
+    {
+      "name": "ledger-between-exclusive-bounds",
+      "when": "when a task needs a date slice from kiln.Ledger",
+      "body": "kiln.Ledger.between(start, end) includes entries dated exactly on start and exactly on end, and excludes dates outside that closed interval. For an inclusive date range, pass the requested bounds through unchanged and return the method\u2019s tuples directly; do not expand or contract the dates."
+    },
+    {
+      "name": "shelf-zero-based-indexing",
+      "when": "when a task reads or writes kiln.Shelf slots",
+      "body": "kiln.Shelf uses zero-based slot numbers. `get(0)` and `put(0, item)` refer to the first slot, and `find(item)` returns the zero-based slot index of the matching item. Use slot 0 for the first slot; do not shift indices by 1."
+    },
+    {
+      "name": "shelf-first-slot-access",
+      "when": "when a task needs the item in the first logical slot of a kiln.Shelf",
+      "body": "kiln.Shelf slot numbering is zero-based, and the first slot is slot 0. Use shelf.get(0) to read that slot; it returns the item stored there or None if the slot is empty. Do not search for the first non-empty slot unless the task explicitly asks for it."
+    }
+  ]
+}

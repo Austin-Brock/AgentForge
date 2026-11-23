@@ -1,0 +1,26 @@
+Training the 'emma-v2' version on 18 tasks, up to 3 revisions each (workers: gpt-5.4-nano, reviewer: gpt-5.4-mini)...
+ 1/18 mu1    pass +1 note(s)
+ 2/18 win1   fail -> [procedure/create_skill] -> fail -> [procedure/revise_skill] -> fail -> [procedure/no_change after 3 refusal(s)] -> fail +1 note(s)
+ 3/18 slot1  fail -> [procedure/create_skill] -> fail -> [procedure/create_skill] -> fail -> [procedure/no_change after 3 refusal(s)] -> fail +1 note(s)
+ 4/18 bp1    fail -> [procedure/create_skill] -> fail -> [procedure/revise_skill] -> fail -> [procedure/no_change after 3 refusal(s)] -> fail +1 note(s)
+ 5/18 mg1    fail -> [procedure/create_skill after 1 refusal(s)] -> fail -> [procedure/revise_skill] -> fail -> [procedure/no_change after 3 refusal(s)] -> fail +2 note(s)
+ 6/18 sku1   pass
+ 7/18 mu4    fail -> [procedure/create_skill] -> pass +1 note(s)
+ 8/18 win4   fail -> [procedure/revise_skill] -> fail -> [procedure/revise_skill] -> pass +2 note(s)
+ 9/18 slot4  fail -> [procedure/revise_skill] -> fail -> [procedure/revise_skill] -> fail -> [procedure/no_change after 3 refusal(s)] -> fail +2 note(s)
+10/18 bp4    fail -> [procedure/revise_skill] -> fail -> [procedure/revise_skill] -> fail -> [procedure/no_change after 3 refusal(s)] -> fail +1 note(s)
+11/18 mg4    fail -> [procedure/revise_skill] -> fail -> [procedure/revise_skill] -> pass +1 note(s)
+12/18 sku4   pass +2 note(s)
+13/18 mu7    fail -> [procedure/revise_skill] -> fail -> [procedure/revise_skill] -> pass
+14/18 win7   pass
+15/18 slot7  pass
+16/18 bp7    fail -> [procedure/revise_skill after 1 refusal(s)] -> fail -> [procedure/revise_skill] -> fail -> [procedure/no_change after 3 refusal(s)] -> fail
+17/18 mg7    pass
+18/18 sku7   pass
+
+Tasks: 7 passed first try, 4 passed after a revision, 7 never passed (46 executions in all).
+Reviews: 28, producing 21 edits (6 create_skill, 15 revise_skill); 7 reviews changed nothing.
+Guard refusals: 1 bounded_growth, 21 change_of_strategy, 1 no_leakage. Planning notes: 15 added, 7 refused.
+Final memory: 6 skills, 15 notes, 0 specialists, 8,992 characters. Saved to runs/train-emma-v2/memory.json
+Workers tokens: 308,309 in, 62,885 out over 331 calls (0 from cache).
+Reviewer tokens: 392,766 in, 19,202 out over 143 calls (0 from cache).

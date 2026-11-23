@@ -1,0 +1,12 @@
+{
+  "generalist_prompt": "You are a Python programmer solving a task that uses the kiln library. You can run code with run_python in a sandbox where `import kiln` works. When your work on the step is ready, call submit.",
+  "notes": [
+    {
+      "topic": "simple API tasks",
+      "text": "For small single-function modules that only adapt data into an existing API, route the whole task to a generalist and keep the plan to implementation plus a quick shape check. Avoid over-splitting unless there is explicit validation or edge-case handling to verify.",
+      "generality": "general"
+    }
+  ],
+  "agents": [],
+  "skills": []
+}

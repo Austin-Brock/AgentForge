@@ -1,0 +1,19 @@
+Evaluating seed, emma, unguarded on 30 held-out tasks, 3 times each (270 attempts, gpt-5.4-nano)...
+
+version                      pass rate   range over repeats    passes
+No notebook                        38%           33% to 43%    34/90
+Careful (EMMA)                     37%           37% to 37%    33/90
+Careful, revised reviewer          53%           50% to 57%    48/90
+Anything-goes                      76%           73% to 80%    68/90
+
+passes by rule               minor_units     windows       slots       rates     merging        skus
+No notebook                         9/15        9/15        2/15        0/15        2/15       12/15
+Careful (EMMA)                      6/15        9/15        3/15        1/15        2/15       12/15
+Careful, revised reviewer           9/15       15/15        1/15        0/15       11/15       12/15
+Anything-goes                       7/15       12/15       14/15       12/15       11/15       12/15
+
+how each worked              used a skill  tested code  avg rounds  errors  tokens
+No notebook                            0%          69%         5.2       0  575,014
+Careful (EMMA)                        66%          91%         6.5       0  948,115
+Careful, revised reviewer             82%          82%         6.4       0
+Anything-goes                         93%          78%         5.3       0  747,697

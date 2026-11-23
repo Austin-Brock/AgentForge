@@ -1,0 +1,20 @@
+{
+  "seed": {
+    "input": 476750,
+    "output": 98264,
+    "calls": 555,
+    "cached_calls": 0
+  },
+  "emma": {
+    "input": 817839,
+    "output": 130276,
+    "calls": 774,
+    "cached_calls": 0
+  },
+  "unguarded": {
+    "input": 640225,
+    "output": 107472,
+    "calls": 661,
+    "cached_calls": 0
+  }
+}

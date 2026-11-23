@@ -359,6 +359,24 @@ The gaps between the anything-goes version and the others are much larger than t
 
 **What would test it properly.** More training tasks across several unrelated libraries; five revisions per task; repeated training runs; and a held-out set that includes rules the training tasks never touched.
 
+## Saved evidence
+
+Every run behind the numbers in this README is saved under `runs/`, so the results can be checked or re-read without spending anything.
+
+| Folder | What it holds |
+|---|---|
+| `runs/calibrate/` | Stage 1: the single untrained agent on all 48 tasks |
+| `runs/seed/`, `runs/fact/`, `runs/habit/` | Stage 2: the three hand-written notebooks, with every plan, step and submitted solution |
+| `runs/seed/reflections-*.jsonl` | Stages 3 and 4: every diagnosis and proposal from each reviewer model, guarded and unguarded |
+| `runs/train-emma/`, `runs/train-emma-v2/`, `runs/train-unguarded/` | Stage 5: the full event log (`events.jsonl`), the progress log, the notebook after every task (`snapshots/`), and the final notebook (`memory.json`) |
+| `runs/eval/` | Stage 6: every attempt by every version on the unseen tasks, and token usage |
+
+`python -m agentforge eval --show`, `python -m agentforge report` and `python -m agentforge explain <task>` all read from these files.
+
+The cache of raw model replies (`.cache/`, about 22 MB) is not saved in the repository. Without it, re-running a command calls the model again and will give slightly different results.
+
+For a plain-language guide to explaining the project, see [EXPLAINING.md](EXPLAINING.md).
+
 ## Paper to code
 
 | In the paper | In this repo |

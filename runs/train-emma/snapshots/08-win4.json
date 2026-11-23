@@ -1,0 +1,68 @@
+{
+  "generalist_prompt": "You are a Python programmer solving a task that uses the kiln library. You can run code with run_python in a sandbox where `import kiln` works. When your work on the step is ready, call submit.",
+  "notes": [
+    {
+      "topic": "simple API tasks",
+      "text": "For small single-function modules that only adapt data into an existing API, route the whole task to a generalist and keep the plan to implementation plus a quick shape check. Avoid over-splitting unless there is explicit validation or edge-case handling to verify.",
+      "generality": "general"
+    },
+    {
+      "topic": "boundary-aware range checks",
+      "text": "When a range helper has uncertain endpoint semantics, add an explicit step to probe both boundaries before committing to a wrapper implementation. Prefer a minimal validation step that checks single-item spans and spans starting on an existing record date, since those often reveal off-by-one behavior quickly.",
+      "generality": "general"
+    },
+    {
+      "topic": "route to simplest capable agent",
+      "text": "For tiny adapter modules, keep ownership with a generalist unless there is a confirmed API quirk that needs specialized handling. If a quirk is discovered, attach only the narrow skill needed to verify that behavior rather than expanding the plan into multiple general-purpose steps.",
+      "generality": "general"
+    },
+    {
+      "topic": "indirect access quirks",
+      "text": "When a storage API has both direct access and a search-like method, verify which path actually reflects inserted state before coding the adapter. Prefer the API\u2019s own lookup/search behavior over indexed reads if the implementation shows the index view can be incomplete or shifted.",
+      "generality": "general"
+    },
+    {
+      "topic": "percentage adapters",
+      "text": "When an API helper takes a fractional rate but callers provide a percentage, add an explicit conversion step before delegating. This should be treated as a narrow, testable adapter concern rather than a broader implementation issue.",
+      "generality": "general"
+    },
+    {
+      "topic": "verify library quirks before wrapping",
+      "text": "When a task delegates core behavior to a library helper, first confirm the helper's actual edge-case behavior with the smallest possible probes before adding any adapter logic. If the helper is already correct, keep the wrapper thin; if not, add only the minimal normalization needed to match the expected contract.",
+      "generality": "general"
+    },
+    {
+      "topic": "order-sensitive combination helpers",
+      "text": "For combination or aggregation APIs, treat input ordering as a potential hidden dependency even when the interface suggests order should not matter. A quick check with mixed-order and one-empty inputs can reveal whether records need to be normalized before delegation.",
+      "generality": "general"
+    },
+    {
+      "topic": "inclusive date boundaries",
+      "text": "When a helper is used to define a date span, confirm whether the start and end boundaries are included before relying on it for filtering. A one-day test at each edge can prevent silent undercounting or overcounting in calendar-based logic.",
+      "generality": "general"
+    }
+  ],
+  "agents": [],
+  "skills": [
+    {
+      "name": "inclusive-ledger-range",
+      "when": "When a date-range API can omit entries on the first boundary.",
+      "body": "Some date-range methods exclude items dated exactly on the start boundary, especially for single-day or calendar-window queries. To preserve an inclusive range, do not rely on the raw range result alone: obtain the ledger's full entries when needed, then filter by `start <= date <= end` before returning the result.\nExample: if a direct range query misses the start date, use all entries and apply the date bounds yourself."
+    },
+    {
+      "name": "shelf-first-slot-access",
+      "when": "When a shelf\u2019s first stored item is not visible through direct slot lookup.",
+      "body": "Use the shelf\u2019s own lookup semantics to read the first occupied position instead of assuming direct slot access works for slot 0. Verify retrieval through the shelf API that reports where an item is stored, and prefer that path whenever the first slot may be masked by the implementation.\nExample:\n- if direct slot access does not reveal the first item, retrieve it through the shelf\u2019s search-based lookup instead.\n- do not rely on slot numbering alone to confirm what item is stored first."
+    },
+    {
+      "name": "fee-percent-conversion",
+      "when": "When a fee helper expects a fractional rate but callers provide a percentage.",
+      "body": "Convert percentage inputs to the fraction expected by the fee helper before calling it. Do not pass whole-number percent values through unchanged.\n\nExample:\nrate = percent / 100\nreturn fee(amount, rate)"
+    },
+    {
+      "name": "normalize-record-order-before-merge",
+      "when": "When a helper that combines keyed records can miss items because input order affects how it groups or folds records.",
+      "body": "Before delegating to a merge helper, normalize each input into a deterministic key order so equal keys can be combined reliably regardless of the original ordering. If one side may be empty, still pass both normalized lists through the same path rather than special-casing emptiness.\nExample:\n- sort records by key before merging\n- then merge and return the combined list."
+    }
+  ]
+}
