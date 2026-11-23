@@ -373,7 +373,19 @@ Every run behind the numbers in this README is saved under `runs/`, so the resul
 
 `python -m agentforge eval --show`, `python -m agentforge report` and `python -m agentforge explain <task>` all read from these files.
 
-The cache of raw model replies (`.cache/`, about 22 MB) is not saved in the repository. Without it, re-running a command calls the model again and will give slightly different results.
+The raw model replies are saved too, compressed, at `evidence/llm-replies.tar.gz` (2.2 MB, 5,693 replies from every stage). To restore them:
+
+```bash
+mkdir -p .cache && tar -xzf evidence/llm-replies.tar.gz -C .cache
+```
+
+What the archive is and is not:
+
+- It is the exact text the models returned for every call made while building this project, each stored under a fingerprint of the request that produced it.
+- With it restored, re-running a command reuses the saved reply whenever the request is identical, at no cost. In a test replay of 12 stage 2 tasks, 62 of 87 calls were served from the archive.
+- It does not replay a run exactly. Where an agent's code crashed in the sandbox, the error message contained a random folder name, so the next request differed and the model was called afresh. The sandbox now hides that folder name, so runs made from here on replay more fully.
+- It holds replies only, not the requests. The requests can be rebuilt by re-running the code; the plans, steps and solutions of each run are in `runs/`.
+- Any change to a prompt or to the model changes the fingerprints, and those calls are made afresh.
 
 For a plain-language guide to explaining the project, see [EXPLAINING.md](EXPLAINING.md).
 

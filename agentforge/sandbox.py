@@ -38,6 +38,10 @@ class Workdir:
             out = proc.stdout + proc.stderr
         except subprocess.TimeoutExpired:
             out = f"TimeoutError: no result after {timeout} seconds"
+        # Error messages include the throwaway folder's random name. Replace it with a fixed one, so
+        # the same code gives the same output on every run and saved model replies can be reused.
+        for folder in {str(self.path.resolve()), str(self.path)}:
+            out = out.replace(folder, "/sandbox")
         if len(out) > MAX_OUTPUT:
             out = out[:MAX_OUTPUT] + "\n[output truncated]"
         return out or "(no output)"

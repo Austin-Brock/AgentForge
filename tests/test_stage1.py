@@ -44,6 +44,8 @@ def test_sandbox_has_kiln_but_not_the_hidden_tests():
         assert wd.run("import kiln; print(kiln.sku(' a '))").strip() == "A"
         assert "ModuleNotFoundError" in wd.run("import tasks")
         assert "TimeoutError" in wd.run("while True: pass", timeout=1)
+        error = wd.run("raise ValueError('boom')")
+        assert 'File "/sandbox/_main.py"' in error and str(wd.path) not in error
 
 
 def test_rollout_runs_code_then_submits():
