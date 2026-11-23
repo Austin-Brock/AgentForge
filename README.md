@@ -43,6 +43,29 @@ flowchart LR
     F --> A
 ```
 
+## About the paper
+
+**What it set out to do.** Make AI agent systems improve at specialised work without retraining the model and without an expert hand-building the system for each new field.
+
+**The problem it names.** Earlier systems that let agents rewrite their own setup leave the model to decide where to make a change and how big to make it. The paper calls this "ill-scoped evolution": the outcome follows the model's habits. Its example is one model that keeps adding skills while another keeps adding agents.
+
+**Its method.** Treat the whole team setup as a memory with three levels (controller notes, agents, skills). After a failure, a reflector assigns the failure to the one level that owns the fix and proposes one edit there. Guards written as ordinary code keep every accepted edit within its scope, small, and bounded in size.
+
+**How the authors tested it.**
+
+| | The paper | This project |
+|---|---|---|
+| Tasks | Three public benchmarks: KramaBench (data science), AppWorld (app automation), BBEH (reasoning) | One made-up library, 48 tasks |
+| Models | Five, with one model in every role per run | One small model for workers, one mid-sized for the reviewer |
+| Compared against | Four published systems: ACE, GEPA, EvoMAS, ADAS | No notebook, and an anything-goes version of my own design |
+| Training | One pass, up to five revisions per task | One pass, up to three revisions per task |
+
+**What the authors report.** EMMA scored best overall on all three benchmarks, by up to 32.5% over the strongest other system, and came first in 17 of 20 benchmark-and-model combinations. Averaged over the five models it reached 0.654 on KramaBench against 0.584 for the next best, and 0.663 on BBEH against 0.605. It also needed 17% to 38% fewer training runs than the most efficient other system.
+
+**Limits the authors state.** The method narrows the gap between stronger and weaker models but does not remove it. An accepted edit stays in memory even if the task still fails afterwards, so unhelpful entries can remain. Stage 5 and stage 6 of this project ran into the second one directly.
+
+*How this section was sourced: the abstract, method, setup and main result tables were read directly from the paper. The stated limits and the appendix values used elsewhere in this README came through a summarised reading and have not been checked against the PDF.*
+
 ## Status
 
 | Stage | What it builds | Status |
@@ -63,7 +86,7 @@ cp .env.example .env        # add your OpenAI key
 python -m agentforge models # check the model ID in .env exists on your account
 ```
 
-Commands so far:
+Commands:
 
 | Command | What it does |
 |---|---|
@@ -315,6 +338,20 @@ Neither version created a specialist or changed the generalist's instructions.
 
 A fourth version was added before the run. Stage 5 showed the careful notebook's lessons were vague, so the careful version was trained a second time with one change: the reviewer was told to name the `kiln` function involved and state exactly what it does. Both careful versions are reported, so the fix is tested and not assumed.
 
+**Training the fourth version.** On the 18 training tasks the revised careful version did slightly worse than the first:
+
+| | Careful (EMMA) | Careful, revised reviewer |
+|---|---|---|
+| Passed first try | 8 | 7 |
+| Passed after one or more lessons | 5 | 4 |
+| Never passed | 5 | 7 |
+| Total attempts | 42 | 46 |
+| Proposals refused by a guard | 18 (13 change of strategy) | 23 (21 change of strategy) |
+| Reviews that ended with nothing changed | 3 | 7 |
+| Notebook at the end | 8 skills, 15 notes | 6 skills, 15 notes |
+
+Its lessons were concrete, as intended. Two were correct and clearly stated: date ranges exclude the end date, and merging needs sorted input (the first time any version learned that rule). Others were concrete and false: two skills say shelf slots are numbered from zero, and a rates skill gives the wrong divisor.
+
 **What was run.** Four notebooks, 30 unseen tasks, 3 repeats each: 360 attempts.
 
 **Result.**
@@ -358,6 +395,10 @@ The gaps between the anything-goes version and the others are much larger than t
 - One training run per version. Training is sequential, so a second run could produce a different notebook.
 
 **What would test it properly.** More training tasks across several unrelated libraries; five revisions per task; repeated training runs; and a held-out set that includes rules the training tasks never touched.
+
+## Cost
+
+The whole project used about $4 of OpenAI usage, estimated from token counts. The one direct check available, the account balance before and after the two stage 5 training runs, showed 66 cents against an estimate of 75.
 
 ## Saved evidence
 

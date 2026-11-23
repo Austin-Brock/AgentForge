@@ -33,6 +33,7 @@ h2 { font-size:21px; margin:44px 0 10px; }
 h3 { font-size:16px; margin:24px 0 6px; }
 p, li { color:var(--text-primary); } .lede { font-size:18px; color:var(--text-secondary); margin:0 0 20px; }
 .muted { color:var(--text-muted); font-size:14px; }
+a { color:var(--series-1); }
 .card { background:var(--surface-2); border-radius:10px; padding:16px 18px; margin:14px 0; }
 .tiles { display:flex; flex-wrap:wrap; gap:12px; margin:18px 0; }
 .tile { flex:1 1 170px; background:var(--surface-2); border-radius:10px; padding:14px 16px; }
@@ -304,6 +305,25 @@ with its notebook frozen.</p>
 {v2_note}
 </ul>
 
+<h2>What we checked along the way</h2>
+<p>Before the main experiment, four smaller tests each checked one piece of the idea.</p>
+<ol class="steps">
+<li><b>The agent really does not know the rules.</b> Untrained, it passed 17 of 48 tasks and kept repeating the same
+mistakes. It failed all 8 shelf tasks the same way, by treating the first slot as slot 0 when the library counts
+from 1.</li>
+<li><b>Where a lesson is written matters.</b> We wrote two lessons by hand. A fact, “shelf slots start at 1”, stored
+as a how-to card, fixed 7 of 8 shelf tasks and nothing else, at no extra cost. A habit, “test before you submit”,
+added to the agent's standing instructions, lifted the total from 14 to 23 of 48 but took about three and a half
+times as much computing.</li>
+<li><b>An unchecked reviewer cannot be trusted.</b> Reviewing 15 failures, a cheap AI reviewer found the real cause
+about 5 times and a stronger one about 8 times, by our reading. Some proposals pointed at things that did not
+exist, some copied one task's answer into a “general” lesson, and one would have erased an agent's instructions.</li>
+<li><b>The rule-checker catches bad form but not falsehood.</b> On the same 15 failures it accepted 11 lessons first
+time and 4 more after sending them back with a reason. Several of the accepted lessons were still wrong.</li>
+</ol>
+<p class="muted">The evidence for each of these is in the
+<a href="https://github.com/Austin-Brock/AgentForge#results-and-findings-stage-by-stage">stage-by-stage write-up</a>.</p>
+
 <h2>Results on the unseen tasks</h2>
 {bar_chart(summaries)}
 <p class="muted">Bars show the average over {repeats} repeats. Each dot is one repeat, so the spread of the dots shows
@@ -339,6 +359,17 @@ public benchmarks and five AI models. This is a test of the idea, not a reproduc
 versions should not be read as real differences.</li>
 <li>The anything-goes version is our own design, not one of the paper's comparison systems.</li>
 <li>Workers used OpenAI's gpt-5.4-nano and the reviewer used gpt-5.4-mini. The paper uses one model for every role.</li>
+</ul>
+<h2>More</h2>
+<ul>
+<li><a href="https://github.com/Austin-Brock/AgentForge">The code and full write-up</a>, with results, findings and
+caveats for every stage, and a table matching each part of the paper to the code.</li>
+<li><a href="https://github.com/Austin-Brock/AgentForge#about-the-paper">What the paper set out to do</a>, how its
+authors tested it, and what they reported.</li>
+<li><a href="https://github.com/Austin-Brock/AgentForge/blob/main/EXPLAINING.md">A plain-language guide</a> with
+short and long explanations, a glossary, and answers to likely questions.</li>
+<li><a href="https://github.com/Austin-Brock/AgentForge#saved-evidence">The saved evidence</a>: every attempt, every
+reviewer diagnosis, the training logs, the notebooks, and the raw model replies.</li>
 </ul>
 <p class="muted">Built with AgentForge. Paper: Niu, Liu, Yu and Klinkner, “EMMA: Structured Episodic Memory for
 Multi-Agent Workflow Synthesis”, 2026.</p>
