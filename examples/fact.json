@@ -1,0 +1,9 @@
+{
+  "skills": [
+    {
+      "name": "kiln-shelf-slots",
+      "when": "Any step that reads, writes or searches the slots of a kiln.Shelf",
+      "body": "Shelf slots are numbered from 1 to shelf.size. Slot 0 does not exist: shelf.get(0) returns None and shelf.put(0, item) is silently ignored. shelf.find(item) returns the slot number, or 0 when the item is not on the shelf. To visit every slot use range(1, shelf.size + 1)."
+    }
+  ]
+}

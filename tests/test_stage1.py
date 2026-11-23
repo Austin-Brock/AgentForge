@@ -3,7 +3,7 @@ import pytest
 
 from agentforge.gate import gate
 from agentforge.llm import ScriptedLLM
-from agentforge.rollout import rollout_seed, run_agent
+from agentforge.rollout import run_agent
 from agentforge.sandbox import Workdir
 from tasks import load_tasks
 
@@ -52,7 +52,7 @@ def test_rollout_runs_code_then_submits():
         ScriptedLLM.call("run_python", code="import kiln; s = kiln.Shelf(1); s.put(1, 'a'); print(s.get(0), s.get(1))"),
         ScriptedLLM.call("submit", code=task.ref),
     ])
-    run = rollout_seed(llm, task)
+    run = run_agent(llm, "system", task.render())
     assert run.steps[0]["output"].strip() == "None a"
     assert run.rounds == 2 and not run.overflow
     assert gate(task, run.solution).passed

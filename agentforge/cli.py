@@ -58,32 +58,38 @@ def cmd_show(args):
     print(task.render())
 
 
-def cmd_calibrate(args):
-    """Run the untrained agent on the tasks and report how often it passes."""
+def cmd_run(args):
+    """Run the agent team on the tasks with a fixed memory and report how often it passes."""
     need_key()
     from agentforge.llm import LLM
-    from agentforge.rollout import rollout_seed
+    from agentforge.memory import Memory
+    from agentforge.rollout import rollout
 
     llm = LLM(model=args.model, max_tokens_total=args.max_tokens_total)
+    memory = Memory.load(args.memory) if args.memory else Memory()
+    label = args.label or (Path(args.memory).stem if args.memory else "seed")
     tasks = [t for t in load_tasks() if not args.family or t.family == args.family]
     tasks = tasks[: args.limit] if args.limit else tasks
 
     def one(task):
         try:
-            run = rollout_seed(llm, task, salt=args.salt)
+            run = rollout(llm, memory, task, salt=args.salt)
             result = gate(task, run.solution)
             return {"task": task.id, "family": task.family, "split": task.split, "passed": result.passed,
-                    "digest": result.digest, "rounds": run.rounds, "overflow": run.overflow,
-                    "steps": run.steps, "solution": run.solution}
+                    "digest": result.digest, "rounds": run.rounds, "overflows": len(run.overflows),
+                    "ran_code": any(s["runs"] for s in run.steps),
+                    "skills_used": sorted({n for s in run.steps for n in s["skills"]}),
+                    "plan": run.plan, "steps": run.steps, "solution": run.solution}
         except Exception as e:  # keep the other tasks going; report this one as an error
             return {"task": task.id, "family": task.family, "split": task.split, "passed": False,
                     "digest": f"run error: {type(e).__name__}: {e}", "error": True}
 
-    print(f"Running the untrained agent ({llm.model}) on {len(tasks)} tasks...")
+    print(f"Running '{label}' memory ({llm.model}) on {len(tasks)} tasks: {len(memory.notes)} notes, "
+          f"{len(memory.agents)} specialists, {len(memory.skills)} skills...")
     with ThreadPoolExecutor(args.workers) as pool:
         rows = list(pool.map(one, tasks))
 
-    out = Path("runs/calibrate")
+    out = Path("runs") / label
     out.mkdir(parents=True, exist_ok=True)
     (out / "results.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
 
@@ -95,13 +101,17 @@ def cmd_calibrate(args):
         print(f"{fam:<13}{sum(r['passed'] for r in rs):>4}/{len(rs):<3}   {FAMILY_LABELS[fam]}")
     passed = sum(r["passed"] for r in rows)
     print(f"{'ALL':<13}{passed:>4}/{len(rows):<3}   {100 * passed / len(rows):.0f}% pass rate")
+    ok = [r for r in rows if not r.get("error")]
+    print(f"Ran code before submitting on {sum(r['ran_code'] for r in ok)} of {len(ok)} tasks; "
+          f"attached a skill on {sum(bool(r['skills_used']) for r in ok)}.")
     errors = [r for r in rows if r.get("error")]
     if errors:
         print(f"\n{len(errors)} tasks hit a run error (counted as failed). First: {errors[0]['digest']}")
-    print("\nFailures:")
-    for r in rows:
-        if not r["passed"]:
-            print(f"  {r['task']:<6} {r['digest']}")
+    if args.failures:
+        print("\nFailures:")
+        for r in rows:
+            if not r["passed"]:
+                print(f"  {r['task']:<6} {r['digest']}")
     u = llm.usage
     print(f"\nTokens: {u['input']:,} in, {u['output']:,} out over {u['calls']} calls "
           f"({u['cached_calls']} more served from cache). Details: {out / 'results.jsonl'}")
@@ -119,14 +129,18 @@ def main(argv=None):
     p.add_argument("task")
     p.set_defaults(fn=cmd_show)
 
-    p = sub.add_parser("calibrate", help="run the untrained agent and report its pass rate")
+    p = sub.add_parser("run", aliases=["calibrate"],
+                       help="run the agent team with a fixed memory (default: empty) and report its pass rate")
+    p.add_argument("--memory", help="a memory JSON file, for example examples/fact.json")
+    p.add_argument("--label", help="name for the output folder under runs/")
+    p.add_argument("--failures", action="store_true", help="list every failed task")
     p.add_argument("--model")
     p.add_argument("--family", choices=list(FAMILY_LABELS))
     p.add_argument("--limit", type=int)
     p.add_argument("--workers", type=int, default=6)
     p.add_argument("--salt", default="", help="change to get a fresh sample instead of cached replies")
     p.add_argument("--max-tokens-total", type=int, default=2_000_000)
-    p.set_defaults(fn=cmd_calibrate)
+    p.set_defaults(fn=cmd_run)
 
     args = parser.parse_args(argv)
     sys.exit(args.fn(args) or 0)

@@ -21,8 +21,8 @@ The paper says this beats letting the AI rewrite its own notebook however it lik
 | Stage | What it builds | Status |
 |---|---|---|
 | 1. The problem | A made-up library with unwritten rules, 48 tasks, a grader, an untrained agent | Done |
-| 2. Memory | The three-section notebook | Next |
-| 3. Scoped reflection | A reviewer that assigns each failure to one section | Not started |
+| 2. Memory | The three-section notebook | Done |
+| 3. Scoped reflection | A reviewer that assigns each failure to one section | Next |
 | 4. Guards | The rule-checker that can refuse an edit | Not started |
 | 5. Training | The learning loop, and the anything-goes version | Not started |
 | 6. The experiment | The three-way comparison and a results page | Not started |
@@ -42,7 +42,8 @@ Commands so far:
 |---|---|
 | `python -m agentforge check-tasks` | Checks the task set without calling a model |
 | `python -m agentforge show win1` | Prints one task exactly as the agent sees it |
-| `python -m agentforge calibrate` | Runs the untrained agent on every task |
+| `python -m agentforge run` | Runs the agent team on every task with an empty notebook |
+| `python -m agentforge run --memory examples/fact.json` | The same, with a notebook loaded from a file |
 | `pytest` | Runs the automated checks (no model calls) |
 
 The agent's code runs on your machine in a throwaway folder with a timeout. That is isolation for convenience, not a security boundary.
@@ -78,8 +79,50 @@ The agent's code runs on your machine in a throwaway folder with a timeout. That
 
 **Caveat.** This is a single run per task, so the per-rule counts will vary somewhat between runs.
 
+### Stage 2: the notebook
+
+**What was built.** The memory, which is the only thing that will ever learn. It is a plain text file with three sections:
+
+| Section | What it holds | Who reads it |
+|---|---|---|
+| Controller notes | Rules for splitting up and handing out work | The controller, when planning |
+| Agent pool | Specialists, each inheriting the generalist's instructions plus its own | The agent doing a step |
+| Skill pool | Short procedures, each with a one-line "use when" label | The controller sees the labels; the agent gets the full text |
+
+The single agent from stage 1 became a small team: a controller plans the steps and picks an agent and skills for each, and the agent does the work. If an agent runs out of rounds, the controller splits its step into smaller ones.
+
+**What was run.** All 48 tasks, three times, each with a different notebook written by hand:
+
+- **Empty:** nothing in it. This is the real baseline for the later experiment.
+- **Fact:** one skill saying shelf slots are numbered from 1 ([examples/fact.json](examples/fact.json)).
+- **Habit:** one paragraph added to the generalist's instructions, telling it to test its code on small examples, including edge cases, before submitting ([examples/habit.json](examples/habit.json)).
+
+**Result.**
+
+| Notebook | Passed | Shelf tasks | Date-range tasks | Tested its code | Tokens used |
+|---|---|---|---|---|---|
+| Empty | 14 of 48 (29%) | 0 of 8 | 3 of 8 | 30 of 48 tasks | 366,000 |
+| Fact | 20 of 48 (42%) | 7 of 8 | 2 of 8 | 34 of 48 tasks | 347,000 |
+| Habit | 23 of 48 (48%) | 2 of 8 | 6 of 8 | 46 of 46 tasks | 1,278,000 |
+
+**Findings.**
+
+- A fact is narrow and reliable. The one skill took shelf tasks from 0 to 7 of 8 and cost nothing extra. The controller attached it to all eight shelf tasks, plus one product-code task that also uses a shelf, and to nothing else.
+- A habit is broad and expensive. Testing before submitting helped across more rules, mainly date ranges, but used about three and a half times the tokens and made agents run out of rounds 27 times, against 4 with the empty notebook. It still missed most shelf tasks, because a test only helps if the agent picks an example that exposes the problem.
+- The two lessons belong in different places. The fact is only useful when a shelf is involved, so it sits in a skill that is pulled out on demand. The habit applies to everything, so it sits in the instructions every agent reads. This is the reason the paper's memory has levels.
+- The controller over-plans. It split every one of these small tasks into several steps, even though it was told to use one step unless the task had separable parts. Some solutions became over-built as a result. This is a planning problem, which is what the third section, controller notes, exists to fix. It has been left alone on purpose, for the learning loop to find.
+- The team with an empty notebook (14 of 48) did no better than the single agent in stage 1 (17 of 48). More structure does not help by itself.
+
+**What this shows about the paper.** This is Section 3.1: memory is split by how widely a lesson applies. A person chose where each lesson went here. The paper's contribution is doing that choice automatically and safely, which stages 3 and 4 build.
+
+**Caveats.**
+
+- Each notebook was run once, and run-to-run variation is large. The money tasks scored 4, 2 and 6 of 8 across the three runs, although neither notebook says anything about money. Differences of a few tasks are noise. The final experiment will repeat each run.
+- In the habit run, OpenAI rejected two tasks with a content-policy error that looks spurious. They are counted as failures.
+
 ## How it differs from the paper
 
 - One small made-up domain instead of three public benchmarks, and one model instead of five.
 - OpenAI's `gpt-5.4-nano` instead of the paper's models.
+- The controller is simpler than the paper's: it plans once and passes each step's result to the next, without re-planning after every step.
 - Tasks, prompts and size limits are my own. The paper has no code release that I could find.
