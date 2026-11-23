@@ -22,8 +22,8 @@ The paper says this beats letting the AI rewrite its own notebook however it lik
 |---|---|---|
 | 1. The problem | A made-up library with unwritten rules, 48 tasks, a grader, an untrained agent | Done |
 | 2. Memory | The three-section notebook | Done |
-| 3. Scoped reflection | A reviewer that assigns each failure to one section | Next |
-| 4. Guards | The rule-checker that can refuse an edit | Not started |
+| 3. Scoped reflection | A reviewer that assigns each failure to one section | Done |
+| 4. Guards | The rule-checker that can refuse an edit | Next |
 | 5. Training | The learning loop, and the anything-goes version | Not started |
 | 6. The experiment | The three-way comparison and a results page | Not started |
 
@@ -44,6 +44,7 @@ Commands so far:
 | `python -m agentforge show win1` | Prints one task exactly as the agent sees it |
 | `python -m agentforge run` | Runs the agent team on every task with an empty notebook |
 | `python -m agentforge run --memory examples/fact.json` | The same, with a notebook loaded from a file |
+| `python -m agentforge reflect --run seed` | Has the reviewer diagnose every training failure in a saved run. Nothing is changed |
 | `pytest` | Runs the automated checks (no model calls) |
 
 The agent's code runs on your machine in a throwaway folder with a timeout. That is isolation for convenience, not a security boundary.
@@ -120,9 +121,57 @@ The single agent from stage 1 became a small team: a controller plans the steps 
 - Each notebook was run once, and run-to-run variation is large. The money tasks scored 4, 2 and 6 of 8 across the three runs, although neither notebook says anything about money. Differences of a few tasks are noise. The final experiment will repeat each run.
 - In the habit run, OpenAI rejected two tasks with a content-policy error that looks spurious. They are counted as failures.
 
+### Stage 3: the reviewer
+
+**What was built.** The reflector: an AI reviewer that reads one failed attempt and does four things, following the paper. It finds the step that went wrong, assigns the failure to one of five types, writes the lesson so it applies beyond this one task, and proposes exactly one edit.
+
+| Failure type | Meaning | Edits it may propose |
+|---|---|---|
+| Execution slip | Knew the method, slipped once | Retry with a hint, or nothing |
+| Agent behaviour | A general working habit failed | Rewrite an agent's instructions |
+| Procedure | The method for a kind of sub-problem was wrong or missing | Add or revise a skill |
+| Missing capability | No agent suits this work | Add a skill or a specialist |
+| Routing | The work was split up or handed out badly | Add a controller note, or retry with a hint |
+
+The reviewer never sees the hidden tests. It sees the attempt and the names of the failed tests, and it can run up to three rounds of experiments in the sandbox to check its theory. In this stage its proposals are only recorded. Nothing is applied.
+
+**What was run.** The reviewer diagnosed the 15 training-task failures from the empty-notebook run in stage 2, once with each of two models in the reviewer role.
+
+**Result.**
+
+| | Cheap reviewer (`gpt-5.4-nano`) | Stronger reviewer (`gpt-5.4-mini`) |
+|---|---|---|
+| Found the real cause (my reading of each diagnosis) | About 5 of 15 | About 8 of 15 |
+| Proposed a usable "add a skill" edit | 0 of 15 | 11 of 15 |
+| Tried to revise a skill that does not exist | 15 of 15 | 3 of 15 |
+| Lesson named the task's own function | 8 of 15 | 1 of 15 |
+| Failure types used | Procedure, 15 times | Procedure 14 times, agent behaviour once |
+
+Examples from the stronger reviewer:
+
+- **Right.** For a date-range failure: "`Ledger.between(start, end)` returns entries with dates `>= start` and `< end`; the end date is excluded. To include a final day, advance the upper bound to the next day."
+- **Wrong.** For a merging failure: "Call the merge helper and return its result directly. Do not re-sort." The real rule is the opposite: the lists must be sorted *before* merging. The reviewer never tried unsorted input, so it never saw records being dropped.
+- **Too drastic.** For another merging failure it proposed replacing the generalist's entire instructions with one new paragraph.
+
+**Findings.**
+
+- An unchecked reviewer is not safe to obey. Across the two reviewers, proposals pointed at things that do not exist, copied the task's own function into the "general" lesson, stated the opposite of the truth, and would have erased an agent's instructions. Each of these is something stage 4's guards are meant to catch, except one: a confident, well-formed, wrong lesson. Only re-running the task can expose that.
+- The reviewer has to be made to investigate. In a first version it was allowed to experiment but not required to, and it ran an experiment on 2 of 34 failures and guessed the rest. Requiring it to reproduce the failure first is what produced the numbers above.
+- The reviewer's model matters more than the workers'. The stronger model found more real causes and wrote lessons that were more general. From here on the reviewer uses `gpt-5.4-mini` and the workers stay on `gpt-5.4-nano`. The paper names pairing a strong reviewer with weaker workers as future work.
+- Nearly everything was filed as "procedure". That fits these tasks, where most failures are a missing fact about `kiln`. But neither reviewer flagged the controller's over-planning from stage 2 as a routing problem, and one failure caused by a typo in the submitted code was filed as a procedure problem instead of a slip.
+- The merging rule was found 0 times in 3 by either reviewer. It may be learned from a different task later, or not at all. That will show in the final results.
+
+**What this shows about the paper.** This is Table 1 and the "reflect" step. The paper's phrase for what goes wrong without limits is "ill-scoped evolution": the model decides where and how much to change, so the result follows the model's habits. Both reviewers showed a habit here (file everything as a skill), and the cheap one showed several bad ones.
+
+**Caveats.**
+
+- "Found the real cause" is my own reading of 15 diagnoses per reviewer, not an automatic score. An automatic keyword score was tried and dropped because it counted wrong diagnoses as right.
+- The first version of the reviewer was run once on all 34 failures, including held-out tasks, and its instructions were then changed. The changes were general (experiment before diagnosing; add versus revise) and say nothing about `kiln`, but strictly the held-out tasks were looked at once. The reviewer now only ever sees training tasks.
+- A third model, `gpt-6-luna`, could not be tried because it does not support this project's way of calling tools.
+
 ## How it differs from the paper
 
 - One small made-up domain instead of three public benchmarks, and one model instead of five.
-- OpenAI's `gpt-5.4-nano` instead of the paper's models.
+- OpenAI's `gpt-5.4-nano` for the controller and agents and `gpt-5.4-mini` for the reviewer. The paper uses one model for every role.
 - The controller is simpler than the paper's: it plans once and passes each step's result to the next, without re-planning after every step.
 - Tasks, prompts and size limits are my own. The paper has no code release that I could find.

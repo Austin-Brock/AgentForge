@@ -79,7 +79,7 @@ def cmd_run(args):
                     "digest": result.digest, "rounds": run.rounds, "overflows": len(run.overflows),
                     "ran_code": any(s["runs"] for s in run.steps),
                     "skills_used": sorted({n for s in run.steps for n in s["skills"]}),
-                    "plan": run.plan, "steps": run.steps, "solution": run.solution}
+                    "notes": run.notes, "plan": run.plan, "steps": run.steps, "solution": run.solution}
         except Exception as e:  # keep the other tasks going; report this one as an error
             return {"task": task.id, "family": task.family, "split": task.split, "passed": False,
                     "digest": f"run error: {type(e).__name__}: {e}", "error": True}
@@ -117,6 +117,76 @@ def cmd_run(args):
           f"({u['cached_calls']} more served from cache). Details: {out / 'results.jsonl'}")
 
 
+def cmd_reflect(args):
+    """Show the reflector's diagnosis of every failure in a saved run. Nothing is applied."""
+    need_key()
+    from agentforge.llm import LLM, reflector_model
+    from agentforge.memory import Memory
+    from agentforge.reflector import SCOPES, reflect, summarize
+    from agentforge.rollout import Rollout
+
+    folder = Path("runs") / args.run
+    if not (folder / "results.jsonl").exists():
+        sys.exit(f"No saved run at {folder}. Run `python -m agentforge run` first.")
+    rows = [json.loads(line) for line in (folder / "results.jsonl").read_text().splitlines()]
+    failed = [r for r in rows if not r["passed"] and not r.get("error")
+              and (args.split == "all" or r["split"] == args.split)]
+    failed = failed[: args.limit] if args.limit else failed
+    tasks = {t.id: t for t in load_tasks()}
+    memory = Memory.load(args.memory) if args.memory else Memory()
+    llm = LLM(model=args.model or reflector_model(), max_tokens_total=args.max_tokens_total)
+
+    def one(row):
+        trace = Rollout(solution=row["solution"], notes=row.get("notes", []), plan=row["plan"], steps=row["steps"],
+                        overflows=[i for i, s in enumerate(row["steps"]) if s["overflow"]])
+        try:
+            r = reflect(llm, memory, tasks[row["task"]], row["digest"], trace)
+        except Exception as e:
+            return {"task": row["task"], "family": row["family"], "error": f"{type(e).__name__}: {e}"}
+        return {"task": row["task"], "family": row["family"], "summary": summarize(r), **r.to_dict()}
+
+    print(f"Reflecting on {len(failed)} failed tasks from the '{args.run}' run ({llm.model})...")
+    with ThreadPoolExecutor(args.workers) as pool:
+        out = list(pool.map(one, failed))
+    good = [r for r in out if "error" not in r]
+    saved = folder / f"reflections-{llm.model}.jsonl"
+    saved.write_text("".join(json.dumps(r) + "\n" for r in out))
+    for r in good if not args.quiet else []:
+        print(f"\n{r['task']} ({r['family']})  ->  {r['scope'] or '?'} / {r['action']}"
+              f"{'' if r['well_formed'] else '   [not a valid scope or action]'}")
+        print(f"  diagnosis: {r['diagnosis']}")
+        print(f"  proposed {r['summary'][:args.width]}")
+
+    print(f"\n{'family':<13}" + "".join(f"{s[:13]:>15}" for s in SCOPES) + f"{'other':>8}")
+    for fam in FAMILY_LABELS:
+        rs = [r for r in good if r["family"] == fam]
+        if rs:
+            counts = [sum(r["scope"] == s for r in rs) for s in SCOPES]
+            print(f"{fam:<13}" + "".join(f"{c:>15}" for c in counts) + f"{len(rs) - sum(counts):>8}")
+
+    # Signs of what would go wrong if every proposal were accepted as it stands.
+    def text(r):
+        return json.dumps(r["payload"])
+    leaks = [r["task"] for r in good if tasks[r["task"]].signature.split("(")[0] in text(r)]
+    new_skills = [r for r in good if r["action"] == "create_skill"]
+    names = {r["payload"].get("name") for r in new_skills}
+    mismatched = [r["task"] for r in good if r["well_formed"] and r["action"] not in SCOPES[r["scope"]]["actions"]]
+    longest = max((len(text(r)) for r in good), default=0)
+    actions = sorted({r["action"] for r in good})
+    print("\nActions proposed: " + ", ".join(f"{sum(r['action'] == a for r in good)} {a}" for a in actions))
+    ghosts = [r["task"] for r in good if r["action"] == "revise_skill" and not memory.skill(r["payload"].get("name"))]
+    print(f"{len(ghosts)} proposals revise a skill that does not exist.")
+    print(f"If every proposal were accepted: {len(new_skills)} new skills under {len(names)} different names; "
+          f"{len(leaks)} proposals name the task's own function; {len(mismatched)} use an action their scope "
+          f"does not allow; {sum(not r['well_formed'] for r in good)} are malformed; the longest is {longest:,} characters.")
+    errors = [r for r in out if "error" in r]
+    if errors:
+        print(f"{len(errors)} reflections hit an error. First: {errors[0]['error']}")
+    u = llm.usage
+    print(f"Tokens: {u['input']:,} in, {u['output']:,} out over {u['calls']} calls. "
+          f"Details: {saved}")
+
+
 def main(argv=None):
     load_env()
     parser = argparse.ArgumentParser(prog="agentforge")
@@ -141,6 +211,19 @@ def main(argv=None):
     p.add_argument("--salt", default="", help="change to get a fresh sample instead of cached replies")
     p.add_argument("--max-tokens-total", type=int, default=2_000_000)
     p.set_defaults(fn=cmd_run)
+
+    p = sub.add_parser("reflect", help="diagnose every failure in a saved run (nothing is applied)")
+    p.add_argument("--run", default="seed", help="folder under runs/ (default: seed)")
+    p.add_argument("--memory", help="the memory file that run used, if any")
+    p.add_argument("--split", choices=["train", "heldout", "all"], default="train",
+                   help="which failures to reflect on (default: train, so held-out tasks stay unseen)")
+    p.add_argument("--limit", type=int)
+    p.add_argument("--width", type=int, default=260, help="characters of each proposal to print")
+    p.add_argument("--quiet", action="store_true", help="print only the summary")
+    p.add_argument("--model", help="reflector model (default: AGENTFORGE_REFLECTOR_MODEL)")
+    p.add_argument("--workers", type=int, default=6)
+    p.add_argument("--max-tokens-total", type=int, default=2_000_000)
+    p.set_defaults(fn=cmd_reflect)
 
     args = parser.parse_args(argv)
     sys.exit(args.fn(args) or 0)

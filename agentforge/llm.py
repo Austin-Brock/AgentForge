@@ -9,6 +9,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 DEFAULT_MODEL = "gpt-5.4-nano"
+# The reflector diagnoses failures. A stronger model here was clearly better in stage 3, and
+# pairing a strong reflector with weaker workers is a direction the paper itself suggests.
+DEFAULT_REFLECTOR_MODEL = "gpt-5.4-mini"
+
+
+def reflector_model():
+    return os.environ.get("AGENTFORGE_REFLECTOR_MODEL") or DEFAULT_REFLECTOR_MODEL
 
 
 class BudgetExceeded(RuntimeError):
@@ -62,7 +69,9 @@ class LLM:
         request = {"model": self.model, "messages": messages}
         if tools:
             request["tools"] = tools
-        if force_tool:
+        if force_tool == "none":
+            request["tool_choice"] = "none"
+        elif force_tool:
             request["tool_choice"] = {"type": "function", "function": {"name": force_tool}}
         if json_mode:
             request["response_format"] = {"type": "json_object"}
@@ -77,7 +86,7 @@ class LLM:
             used = self.usage["input"] + self.usage["output"]
             if self.max_tokens_total and used >= self.max_tokens_total:
                 raise BudgetExceeded(f"token budget of {self.max_tokens_total} reached")
-        response = self.client.chat.completions.create(**request)
+        response = self._create(request)
         message = response.choices[0].message.model_dump(exclude_none=True)
         message = {k: message[k] for k in ("role", "content", "tool_calls") if k in message}
         message.setdefault("content", None)
@@ -87,6 +96,18 @@ class LLM:
             self.usage["output"] += response.usage.completion_tokens
         path.write_text(json.dumps({"message": message}))
         return self._reply(message)
+
+    def _create(self, request, attempts=3):
+        """OpenAI sometimes rejects a harmless prompt as a policy violation; the same prompt
+        usually passes on a retry."""
+        from openai import BadRequestError
+
+        for attempt in range(attempts):
+            try:
+                return self.client.chat.completions.create(**request)
+            except BadRequestError as e:
+                if "flagged" not in str(e) or attempt == attempts - 1:
+                    raise
 
     @staticmethod
     def _reply(message):
