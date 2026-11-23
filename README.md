@@ -24,8 +24,8 @@ The paper says this beats letting the AI rewrite its own notebook however it lik
 | 2. Memory | The three-section notebook | Done |
 | 3. Scoped reflection | A reviewer that assigns each failure to one section | Done |
 | 4. Guards | The rule-checker that can refuse an edit | Done |
-| 5. Training | The learning loop, and the anything-goes version | Next |
-| 6. The experiment | The three-way comparison and a results page | Not started |
+| 5. Training | The learning loop, and the anything-goes version | Done |
+| 6. The experiment | The three-way comparison and a results page | Next |
 
 ## Setup
 
@@ -46,6 +46,8 @@ Commands so far:
 | `python -m agentforge run --memory examples/fact.json` | The same, with a notebook loaded from a file |
 | `python -m agentforge reflect --run seed` | Has the reviewer diagnose every training failure in a saved run. Nothing is changed |
 | `python -m agentforge reflect --run seed --guards` | The same, with each proposal checked by the guards and refused ones sent back for a rewrite |
+| `python -m agentforge train --arm emma` | Runs the learning loop and saves the notebook it produces (`--arm unguarded` for the anything-goes version) |
+| `python -m agentforge explain bp1` | Tells the story of one training task in plain language |
 | `pytest` | Runs the automated checks (no model calls) |
 
 The agent's code runs on your machine in a throwaway folder with a timeout. That is isolation for convenience, not a security boundary.
@@ -220,9 +222,68 @@ Three of the refusals, as they happened:
 - The leakage limit is 8 copied words, not the paper's 15, because these task descriptions are only one or two sentences long.
 - The paper's guard thresholds came from a summarised reading of its appendix and are unconfirmed.
 
+### Stage 5: training
+
+**What was built.** The learning loop, which joins the earlier stages. For each training task, in a fixed order that mixes the six rules:
+
+1. The team attempts the task and the grader marks it.
+2. On a failure, the reviewer proposes a lesson, it is applied, and the team tries again, up to three times.
+3. No lesson is written after the last failed attempt, because it could never be tested.
+4. At the end of the task the reviewer may add planning notes.
+
+Lessons accumulate, so each task starts with what earlier tasks taught.
+
+Two versions share this loop and differ in one thing:
+
+- **Careful (EMMA):** one lesson per failure, of a kind the failure type allows, checked by the guards. At most two planning notes per task, also checked.
+- **Anything-goes (unguarded):** any number of changes per failure, anywhere in the notebook, applied as proposed. No limit on planning notes.
+
+Both reviewers get the same evidence and may run the same experiments.
+
+A third piece is the `explain` command, which reads the training log and tells the story of one task in plain language.
+
+**What was run.** Each version trained once on the 18 training tasks, starting from an empty notebook.
+
+**Result on the training tasks.**
+
+| | Careful | Anything-goes |
+|---|---|---|
+| Passed first try | 8 | 11 |
+| Passed after one or more lessons | 5 | 5 |
+| Never passed | 5 | 2 |
+| Total attempts | 42 | 31 |
+| Reviews of a failure | 24 | 13 |
+| Changes made after reviews | 21 (8 new skills, 8 skill rewrites, 5 one-off hints) | 30 (6 new skills, 3 skill rewrites, 10 notes, 11 one-off hints) |
+| Proposals refused by a guard | 18 | Not applicable |
+| Notebook at the end | 8 skills, 15 notes | 6 skills, 36 notes |
+| Notebook size | 11,000 characters | 16,900 characters |
+| Tokens used | 682,000 | 457,000 |
+
+Neither version created a specialist or changed the generalist's instructions.
+
+**The anything-goes version did better on the training tasks.** These are the tasks each version practised on with feedback, so this is not the experiment's result. Stage 6 measures both on the 30 unseen tasks.
+
+**Findings.**
+
+- The anything-goes lessons are concrete, and the careful ones came out vague. The anything-goes notebook says "kiln.Ledger.between(start, end) is start-inclusive and end-exclusive." The careful one says "Some date-range methods exclude items dated exactly on the start boundary", which names no function and gets the side wrong. My reading is that the careful reviewer over-corrected: told to generalise and forbidden from copying the task, it stripped out the specifics that made the lesson useful. That is a weakness in my reviewer instructions, and possibly a real cost of the no-leakage rule.
+- One guard did most of the refusing, and it cost attempts. Of the 18 refusals, 13 were "change of strategy": after two failed skill edits in a row, a third was not allowed. The reviewer usually kept proposing skills anyway. Three reviews ended with nothing changed and others fell back to a one-off hint.
+- A wrong lesson got credit. On the first rates task the careful reviewer wrote a skill saying to divide the percentage by 100. That is wrong (the rule is to multiply by 100), but the next attempt passed anyway, so the skill stayed. A later task rewrote it to "multiply by 10", still wrong, then failed, and the wrong skill is in the final notebook. Run `python -m agentforge explain bp1` to see the first half of this.
+- The anything-goes notebook has the problems the guards exist to prevent. It holds three notes and a skill about one specific training task (`top_key`), two notes with the same name saying the same thing about date ranges, and one note that states something false about merging. It grew by 26 planning notes at task ends alone, and every note is offered to the controller on every task.
+- The merging rule (sort before merging) was not learned by either version.
+- The careful notebook stopped accepting planning notes at its limit of 15, refusing 9 more.
+
+**What this shows about the paper.** This is Algorithm 1. The paper predicts the right-hand column's symptoms: unguarded learning follows the model's habits (here, writing a planning note about everything) and stores task-specific material. It also names the weakness seen in the left-hand column, that an accepted lesson persists whether or not it helped. What the paper does not predict is the careful version learning more slowly, and with vaguer lessons, on the training tasks themselves.
+
+**Caveats.**
+
+- One training run per version. Training is sequential and each step depends on the last, so a second run could go differently.
+- The anything-goes version is my own design for "no scopes, no guards". It is not one of the paper's baseline systems.
+- The limit of three revisions per task (the paper uses five) interacts with the change-of-strategy guard: with only three, the third can never be a skill edit if the first two were.
+
 ## How it differs from the paper
 
 - One small made-up domain instead of three public benchmarks, and one model instead of five.
 - OpenAI's `gpt-5.4-nano` for the controller and agents and `gpt-5.4-mini` for the reviewer. The paper uses one model for every role.
+- Three revisions per training task instead of five, and smaller size limits.
 - The controller is simpler than the paper's: it plans once and passes each step's result to the next, without re-planning after every step.
 - Tasks, prompts and size limits are my own. The paper has no code release that I could find.

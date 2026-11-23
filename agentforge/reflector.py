@@ -1,7 +1,8 @@
 """The reflector: read one failed attempt, assign it to one scope, propose one edit.
 
-This is the paper's Table 1 and the Reflect call of Algorithm 3. Stage 3 has no guards yet:
-proposals are recorded, not applied.
+This is the paper's Table 1 and the Reflect call of Algorithm 3. It also holds the two
+variants used in training: the unguarded reflector (any edits, anywhere) and the
+end-of-task controller update.
 """
 import json
 from dataclasses import asdict, dataclass, field
@@ -50,16 +51,27 @@ PAYLOADS = {
     "memory_note": '{"topic": "<short>", "text": "<1 to 3 sentences>", "generality": "general|domain_specific"}',
 }
 
-MAX_PROBES = 3  # sandbox runs the reflector may use to check a hypothesis
+MAX_PROBES = 3  # sandbox rounds the reflector may use to check a hypothesis
 
 PROBE = [tool("run_python", "Run a Python script in a sandbox where `import kiln` works, to check a hypothesis "
                             "about why the attempt failed.", code="The script to run.")]
+
+_PAYLOAD_LIST = "\n".join(f"- {name}: {shape}" for name, shape in PAYLOADS.items())
+
+# Both the guarded and the unguarded reflector investigate the same way. They differ only in
+# what they are allowed to change.
+INVESTIGATE = (
+    "Do not guess. You cannot see the hidden tests; the gate only names the tests that failed. You have "
+    f"{MAX_PROBES} rounds of run_python, in a sandbox where the submitted module is importable as "
+    "`solution`. First reproduce the failure: call the submitted function on a small case suggested by a "
+    "failed test's name and print what it returns. Then probe kiln directly until you can say exactly what "
+    "kiln does that the agent did not expect. A diagnosis that says 'likely' or 'possibly' is not finished."
+)
 
 
 def _instructions():
     scopes = "\n".join(f"- {name}: {s['meaning']}. Allowed actions: {', '.join(s['actions'])}."
                        for name, s in SCOPES.items())
-    payloads = "\n".join(f"- {name}: {shape}" for name, shape in PAYLOADS.items())
     return (
         "A training task FAILED its correctness gate. Diagnose the failure and propose exactly ONE correction "
         "to the team's memory.\n\n"
@@ -70,18 +82,24 @@ def _instructions():
         "task's function name, its inputs, or any expected value.\n"
         "4. Minimize: propose the smallest edit that would have prevented the failure.\n\n"
         f"Scopes:\n{scopes}\n(create_agent under routing is only for a step that ran out of rounds.)\n\n"
-        f"Payload for each action:\n{payloads}\n"
+        f"Payload for each action:\n{_PAYLOAD_LIST}\n"
         "create_skill adds a new skill. revise_skill is only for a name already listed under SKILL POOL.\n"
         "A skill body states, in a few sentences, how kiln behaves and what to do about it, with at most a "
         "two-line example. It is never a solution to this task.\n\n"
-        "Do not guess. You cannot see the hidden tests; the gate only names the tests that failed. You have "
-        f"{MAX_PROBES} rounds of run_python, in a sandbox where the submitted module is importable as "
-        "`solution`. First reproduce the failure: call the submitted function on a small case suggested by a "
-        "failed test's name and print what it returns. Then probe kiln directly until you can say exactly what "
-        "kiln does that the agent did not expect. A diagnosis that says 'likely' or 'possibly' is not finished.\n\n"
+        f"{INVESTIGATE}\n\n"
         'Final answer, as JSON: {"failing_step": <1-based step number>, "diagnosis": "<one or two sentences>", '
         '"scope": "<scope>", "action": "<action>", "payload": {...}}'
     )
+
+
+FREE_INSTRUCTIONS = (
+    "A training task FAILED its correctness gate. Improve the team's memory so that the team does better on "
+    "future tasks. You may make any number of edits, of any kind, anywhere in memory.\n\n"
+    f"Edits available, with their payloads:\n{_PAYLOAD_LIST}\n\n"
+    f"{INVESTIGATE}\n\n"
+    'Final answer, as JSON: {"diagnosis": "<one or two sentences>", '
+    '"edits": [{"action": "<action>", "payload": {...}}, ...]}'
+)
 
 
 @dataclass
@@ -125,17 +143,13 @@ def describe_attempt(memory, task, digest, trace, history):
     return "\n\n".join(parts)
 
 
-def reflect(llm, memory, task, digest, trace, history=(), feedback=(), salt="", prior_probes=()):
-    """One Reflect call. `feedback` carries guard refusals from earlier rounds; `prior_probes`
-    carries the experiments already run, so a retry does not repeat them."""
-    user = describe_attempt(memory, task, digest, trace, list(history))
+def _investigate_and_answer(llm, system, user, trace, salt, prior_probes=()):
+    """Let the model probe the sandbox, then collect its final JSON. Returns (answer dict, probes)."""
     if prior_probes:
         user += "\n\nWHAT YOUR EXPERIMENTS SHOWED\n" + "\n".join(
             f"ran:\n{p['code'][:600]}\noutput:\n{p['output'][:600]}" for p in prior_probes)
-    if feedback:
-        user += "\n\nYOUR EARLIER PROPOSALS WERE REFUSED\n" + "\n".join(f"- {f}" for f in feedback)
-    messages = [{"role": "system", "content": _instructions()}, {"role": "user", "content": user}]
-    out = Reflection(probes=list(prior_probes))
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    probes = list(prior_probes)
     with Workdir() as wd:
         wd.write("solution.py", trace.solution or "")
         for probe_round in range(0 if prior_probes else MAX_PROBES):
@@ -147,7 +161,7 @@ def reflect(llm, memory, task, digest, trace, history=(), feedback=(), salt="", 
             for call in reply.tool_calls:
                 code = call.args.get("code", "")
                 output = wd.run(code)
-                out.probes.append({"code": code, "output": output})
+                probes.append({"code": code, "output": output})
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": output})
     messages.append({"role": "user", "content": "Give your final answer now, as JSON only."})
     reply = llm.chat(messages, tools=PROBE, force_tool="none", json_mode=True, salt=salt)
@@ -155,20 +169,78 @@ def reflect(llm, memory, task, digest, trace, history=(), feedback=(), salt="", 
         data = json.loads(reply.content)
     except json.JSONDecodeError:
         data = {}
-    if isinstance(data, dict):
-        out.scope = str(data.get("scope", ""))
-        out.action = str(data.get("action", "no_change"))
-        out.payload = data.get("payload") if isinstance(data.get("payload"), dict) else {}
-        out.diagnosis = str(data.get("diagnosis", ""))
-        step = data.get("failing_step")
-        out.failing_step = step if isinstance(step, int) else 0
+    return (data if isinstance(data, dict) else {}), probes
+
+
+def reflect(llm, memory, task, digest, trace, history=(), feedback=(), salt="", prior_probes=()):
+    """One guarded-style Reflect call. `feedback` carries guard refusals from earlier rounds;
+    `prior_probes` carries the experiments already run, so a retry does not repeat them."""
+    user = describe_attempt(memory, task, digest, trace, list(history))
+    if feedback:
+        user += "\n\nYOUR EARLIER PROPOSALS WERE REFUSED\n" + "\n".join(f"- {f}" for f in feedback)
+    data, probes = _investigate_and_answer(llm, _instructions(), user, trace, salt, prior_probes)
+    step = data.get("failing_step")
+    out = Reflection(
+        scope=str(data.get("scope", "")), action=str(data.get("action", "no_change")),
+        payload=data.get("payload") if isinstance(data.get("payload"), dict) else {},
+        diagnosis=str(data.get("diagnosis", "")), failing_step=step if isinstance(step, int) else 0, probes=probes,
+    )
     out.well_formed = out.scope in SCOPES and out.action in PAYLOADS
     return out
 
 
-def summarize(reflection):
-    """One line describing the proposed edit."""
-    p, a = reflection.payload, reflection.action
+def reflect_free(llm, memory, task, digest, trace, history=(), salt=""):
+    """The unguarded reflector: same evidence and experiments, but no scopes, no one-edit limit.
+
+    Returns (diagnosis, edits, probes), where edits is a list of {"action", "payload"}.
+    """
+    user = describe_attempt(memory, task, digest, trace, list(history))
+    user += "\n\nCONTROLLER NOTES (all)\n" + ("\n".join(f"- {n.topic}: {n.text}" for n in memory.notes) or "(none)")
+    data, probes = _investigate_and_answer(llm, FREE_INSTRUCTIONS, user, trace, salt)
+    edits = [e for e in data.get("edits") or [] if isinstance(e, dict) and isinstance(e.get("payload"), dict)]
+    return str(data.get("diagnosis", "")), edits, probes
+
+
+def propose_notes(llm, memory, task, attempts, history, passed, limit, salt=""):
+    """End-of-task controller update (paper Algorithm 1, step 11): propose notes about planning.
+
+    `attempts` is a list of (trace, digest). `limit` is how many notes may be proposed, or None.
+    """
+    lines = []
+    for i, (trace, digest) in enumerate(attempts, 1):
+        steps = "; ".join(f"[{s['agent']}; skills: {', '.join(s['skills']) or 'none'}] {s['instruction'][:120]}"
+                          for s in trace.plan)
+        lines.append(f"Attempt {i}: planned {len(trace.plan)} steps, ran {len(trace.steps)}, "
+                     f"{len(trace.overflows)} ran out of rounds. {digest}\n  plan: {steps}")
+    past = "\n".join(f"- {h['scope']} -> {h['action']}: {h['diagnosis']}" for h in history) or "(none)"
+    notes = "\n".join(f"- [{n.generality}] {n.topic}: {n.text}" for n in memory.notes) or "(none)"
+    cap = f"Add at most {limit} notes" if limit else "Add any notes you think useful"
+    prompt = (
+        f"A training task has finished: it {'PASSED' if passed else 'FAILED'} after {len(attempts)} attempt(s).\n"
+        "You maintain the controller's notes: short rules about how to split a task into steps, which agent to "
+        "give a step to, which skills to attach, and how to check results.\n\n"
+        f"TASK\n{task.render()}\n\nATTEMPTS\n" + "\n".join(lines) + f"\n\nCORRECTIONS TRIED\n{past}\n\n"
+        f"SKILL POOL (name: when)\n{memory.skill_index()}\n\nAGENT POOL\n{memory.agent_index()}\n\n"
+        f"EXISTING NOTES\n{notes}\n\n"
+        f"{cap}, and only if this task taught something about planning or routing that the existing notes do "
+        "not already say. Most tasks need none. Notes must be general: do not mention this task's function or "
+        "copy its wording.\n"
+        'Reply as JSON: {"notes": [{"topic": "<short>", "text": "<1 to 3 sentences>", '
+        '"generality": "general|domain_specific"}]}'
+    )
+    reply = llm.chat([{"role": "system", "content": "You maintain a planning notebook. Reply with JSON only."},
+                      {"role": "user", "content": prompt}], json_mode=True, salt=salt)
+    try:
+        data = json.loads(reply.content)
+    except json.JSONDecodeError:
+        data = {}
+    notes = data.get("notes") if isinstance(data, dict) else None
+    return [n for n in notes or [] if isinstance(n, dict)]
+
+
+def summarize_edit(action, payload):
+    """One line describing an edit."""
+    p, a = payload, action
     if a in ("create_skill", "revise_skill"):
         return f"skill '{p.get('name', '?')}': {p.get('body', '')}"
     if a == "refine_prompt":
@@ -180,3 +252,7 @@ def summarize(reflection):
     if a == "revise_plan":
         return f"directive: {p.get('directive', '')}"
     return "nothing"
+
+
+def summarize(reflection):
+    return summarize_edit(reflection.action, reflection.payload)

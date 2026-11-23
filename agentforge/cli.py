@@ -202,6 +202,52 @@ def cmd_reflect(args):
           f"Details: {saved}")
 
 
+def cmd_train(args):
+    """Run the learning loop over the training tasks and save the memory it produces."""
+    need_key()
+    from agentforge.llm import LLM, reflector_model
+    from agentforge.train import summarize_training, train, training_order
+
+    exec_llm = LLM(model=args.model, max_tokens_total=args.max_exec_tokens)
+    ref_llm = LLM(model=reflector_model(), max_tokens_total=args.max_reflector_tokens)
+    tasks = training_order(load_tasks("train"))
+    tasks = tasks[: args.limit] if args.limit else tasks
+    out = Path("runs") / f"train-{args.arm}"
+    print(f"Training the '{args.arm}' version on {len(tasks)} tasks, up to {args.k} revisions each "
+          f"(workers: {exec_llm.model}, reviewer: {ref_llm.model})...")
+    memory, events = train(args.arm, exec_llm, ref_llm, tasks, out, k=args.k)
+    s = summarize_training(events)
+    print(f"\nTasks: {s['first_try']} passed first try, {s['after_revision']} passed after a revision, "
+          f"{s['never']} never passed ({s['executions']} executions in all).")
+    actions = ", ".join(f"{n} {a}" for a, n in sorted(s["edits_by_action"].items())) or "none"
+    print(f"Reviews: {s['reflections']}, producing {s['edits']} edits ({actions}); "
+          f"{s['no_change']} reviews changed nothing.")
+    if args.arm == "emma":
+        guards = ", ".join(f"{n} {g}" for g, n in sorted(s["refusals_by_guard"].items())) or "none"
+        print(f"Guard refusals: {guards}. Planning notes: {s['notes_added']} added, {s['notes_refused']} refused.")
+    else:
+        print(f"Planning notes added at task end: {s['notes_added']}.")
+    print(f"Final memory: {len(memory.skills)} skills, {len(memory.notes)} notes, {len(memory.agents)} specialists, "
+          f"{memory.size():,} characters. Saved to {out / 'memory.json'}")
+    for name, llm in (("Workers", exec_llm), ("Reviewer", ref_llm)):
+        u = llm.usage
+        print(f"{name} tokens: {u['input']:,} in, {u['output']:,} out over {u['calls']} calls "
+              f"({u['cached_calls']} from cache).")
+
+
+def cmd_explain(args):
+    """Tell the story of one training task in plain language."""
+    from agentforge.explain import explain
+
+    path = Path("runs") / f"train-{args.arm}" / "events.jsonl"
+    if not path.exists():
+        sys.exit(f"No training run at {path.parent}. Run `python -m agentforge train --arm {args.arm}` first.")
+    task = next((t for t in load_tasks() if t.id == args.task), None)
+    if task is None:
+        sys.exit(f"No task named {args.task}.")
+    print(explain(task, [json.loads(line) for line in path.read_text().splitlines()], args.arm))
+
+
 def main(argv=None):
     load_env()
     parser = argparse.ArgumentParser(prog="agentforge")
@@ -241,6 +287,21 @@ def main(argv=None):
     p.add_argument("--workers", type=int, default=6)
     p.add_argument("--max-tokens-total", type=int, default=2_000_000)
     p.set_defaults(fn=cmd_reflect)
+
+    p = sub.add_parser("train", help="run the learning loop and save the memory it produces")
+    p.add_argument("--arm", choices=["emma", "unguarded"], default="emma",
+                   help="emma: one scoped, guarded edit per failure. unguarded: any edits, no checks")
+    p.add_argument("--k", type=int, default=3, help="revisions allowed per task")
+    p.add_argument("--limit", type=int, help="train on only the first N tasks")
+    p.add_argument("--model", help="worker model (default: AGENTFORGE_MODEL)")
+    p.add_argument("--max-exec-tokens", type=int, default=3_000_000)
+    p.add_argument("--max-reflector-tokens", type=int, default=1_200_000)
+    p.set_defaults(fn=cmd_train)
+
+    p = sub.add_parser("explain", help="tell the story of one training task in plain language")
+    p.add_argument("task")
+    p.add_argument("--arm", choices=["emma", "unguarded"], default="emma")
+    p.set_defaults(fn=cmd_explain)
 
     args = parser.parse_args(argv)
     sys.exit(args.fn(args) or 0)
