@@ -148,14 +148,15 @@ def first_violation(r, memory, task, trace, history=()):
     return None
 
 
-def reflect_guarded(llm, memory, task, digest, trace, history=(), salt=""):
+def reflect_guarded(llm, memory, task, digest, trace, history=(), salt="", specific=False):
     """Paper Algorithm 3: propose, check, and send refusals back, up to REFUSAL_ROUNDS times.
 
     Returns (reflection, refusals). If every proposal is refused the result is no_change.
     """
     feedback, refusals, probes, r = [], [], (), Reflection()
     for _ in range(REFUSAL_ROUNDS):
-        r = reflect(llm, memory, task, digest, trace, history, feedback, salt=salt, prior_probes=probes)
+        r = reflect(llm, memory, task, digest, trace, history, feedback, salt=salt, prior_probes=probes,
+                    specific=specific)
         probes = probes or r.probes
         broken = first_violation(r, memory, task, trace, history)
         if not broken:

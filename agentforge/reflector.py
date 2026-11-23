@@ -69,7 +69,22 @@ INVESTIGATE = (
 )
 
 
-def _instructions():
+# The one change in the emma-v2 arm. The original wording produced lessons too vague to use
+# (stage 5), so this version asks for the kiln function and its observed behaviour by name.
+GENERALIZE_V1 = (
+    "3. Generalize: write the correction so it helps on other tasks of the same kind. Do not mention this "
+    "task's function name, its inputs, or any expected value.\n"
+)
+GENERALIZE_V2 = (
+    "3. Generalize: write the correction so it helps on other tasks that use the same part of kiln. Name the "
+    "kiln function or method involved and state exactly what it does, as your experiments showed it: for "
+    "example which end of a range is left out, which value means 'not found', or what unit an argument is in. "
+    "General means reusable on other tasks, not vague. Do not mention this task's own function name, its "
+    "inputs, or any expected value.\n"
+)
+
+
+def _instructions(specific=False):
     scopes = "\n".join(f"- {name}: {s['meaning']}. Allowed actions: {', '.join(s['actions'])}."
                        for name, s in SCOPES.items())
     return (
@@ -78,8 +93,7 @@ def _instructions():
         "Work in four moves:\n"
         "1. Localize: find the step where things first went wrong.\n"
         "2. Classify: choose the ONE scope that owns the correction.\n"
-        "3. Generalize: write the correction so it helps on other tasks of the same kind. Do not mention this "
-        "task's function name, its inputs, or any expected value.\n"
+        + (GENERALIZE_V2 if specific else GENERALIZE_V1) +
         "4. Minimize: propose the smallest edit that would have prevented the failure.\n\n"
         f"Scopes:\n{scopes}\n(create_agent under routing is only for a step that ran out of rounds.)\n\n"
         f"Payload for each action:\n{_PAYLOAD_LIST}\n"
@@ -172,13 +186,13 @@ def _investigate_and_answer(llm, system, user, trace, salt, prior_probes=()):
     return (data if isinstance(data, dict) else {}), probes
 
 
-def reflect(llm, memory, task, digest, trace, history=(), feedback=(), salt="", prior_probes=()):
+def reflect(llm, memory, task, digest, trace, history=(), feedback=(), salt="", prior_probes=(), specific=False):
     """One guarded-style Reflect call. `feedback` carries guard refusals from earlier rounds;
     `prior_probes` carries the experiments already run, so a retry does not repeat them."""
     user = describe_attempt(memory, task, digest, trace, list(history))
     if feedback:
         user += "\n\nYOUR EARLIER PROPOSALS WERE REFUSED\n" + "\n".join(f"- {f}" for f in feedback)
-    data, probes = _investigate_and_answer(llm, _instructions(), user, trace, salt, prior_probes)
+    data, probes = _investigate_and_answer(llm, _instructions(specific), user, trace, salt, prior_probes)
     step = data.get("failing_step")
     out = Reflection(
         scope=str(data.get("scope", "")), action=str(data.get("action", "no_change")),

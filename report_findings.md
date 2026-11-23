@@ -1,0 +1,10 @@
+Findings shown on the results page. One per line, starting with "- ".
+
+- The paper's claim did not hold up in this small test. The anything-goes version passed 76% of attempts on unseen tasks, twice the untrained agent's 38%, and well ahead of both careful versions.
+- The careful version as first built learned nothing useful: 37%, the same as having no notebook. Its lessons were too vague to act on. Told not to copy the task, its reviewer wrote things like "some date-range methods exclude a boundary" without naming the tool or the right boundary.
+- Telling the careful reviewer to be specific raised it to 53%. Where its notebook held a correct rule it passed nearly everything (date ranges 15 of 15, merging 11 of 15). Where it held a false rule it passed almost nothing (rates 0 of 15, shelf slots 1 of 15).
+- No version could tell a true lesson from a false one. The rule-checker checks a lesson's form, not whether it is right, and the reviewer wrote wrong lessons as confidently as correct ones.
+- The anything-goes version won mainly because it learned more from each mistake. It could write a how-to card, a planning note and a retry hint after a single failure, while the careful version was allowed one change. It also wrote down facts about the library in plain terms, which is what these tasks needed.
+- One rule-checker rule cost the careful versions most of their refusals: after two failed changes to the same section, a third is not allowed. With only three tries per task, that often meant a mistake taught nothing.
+- The anything-goes notebook is messier, as the paper predicts: 36 planning notes against 15, duplicates, and notes about one specific practice task. At this size the mess did not hurt. It might with hundreds of tasks, which is the setting the paper is about.
+- This does not show the paper is wrong. It was one made-up library, 18 practice tasks, a small AI model, and each version trained once. The paper's limits are designed for much longer training across varied work, where an unchecked notebook has room to bloat and contradict itself.

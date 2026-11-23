@@ -5,8 +5,9 @@ failure reflect, apply the edit, and try again, up to K revisions. Edits accumul
 tasks start with what earlier ones taught. No edit is made after the final failure, because
 an edit that is never re-run is untested memory.
 
-Two arms share this loop:
+Three arms share this loop:
   emma       one scoped edit per failure, checked by the guards
+  emma-v2    the same, with one change: the reflector is told to name the kiln function and its behaviour
   unguarded  any number of edits anywhere, applied as proposed
 """
 import json
@@ -58,7 +59,7 @@ def apply_free(memory, edits):
 
 def _controller_update(arm, llm, memory, task, attempts, history, passed, salt):
     """End-of-task notes. In the emma arm each note must pass the guards and at most two are kept."""
-    guarded = arm == "emma"
+    guarded = arm.startswith("emma")
     proposed = propose_notes(llm, memory, task, [(t, r.digest) for t, r in attempts], history, passed,
                              NOTES_PER_TASK if guarded else None, salt=salt)
     added, refused = [], []
@@ -108,8 +109,9 @@ def train(arm, exec_llm, ref_llm, tasks, out_dir, k=K_REVISIONS, log=print):
                 if result.passed or attempt == k:
                     break
                 salt = f"train|{arm}|{attempt}"
-                if arm == "emma":
-                    r, refusals = reflect_guarded(ref_llm, memory, task, result.digest, trace, history, salt=salt)
+                if arm.startswith("emma"):
+                    r, refusals = reflect_guarded(ref_llm, memory, task, result.digest, trace, history, salt=salt,
+                                                  specific=arm == "emma-v2")
                     memory, directive = memory.apply(r.action, r.payload)
                     edits = [] if r.action == "no_change" else [{"action": r.action, "payload": r.payload}]
                     history.append({"scope": r.scope, "action": r.action, "diagnosis": r.diagnosis})

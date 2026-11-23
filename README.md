@@ -4,6 +4,21 @@ An EMMA-inspired coding agent that learns from failed tests by updating its rout
 
 It is a small-scale test of the idea in [EMMA: Structured Episodic Memory for Multi-Agent Workflow Synthesis](https://arxiv.org/abs/2610.35966) (Niu, Liu, Yu, Klinkner, 2026). It is not a reproduction of the paper's published numbers.
 
+## Result
+
+Four versions of the same agent were tested on 30 tasks none of them had seen, three times each:
+
+| Version | Passed | Range over 3 repeats |
+|---|---|---|
+| No notebook (untrained) | 38% | 33% to 43% |
+| Careful, the paper's method | 37% | 37% to 37% |
+| Careful, with a reviewer told to be specific | 53% | 50% to 57% |
+| Anything-goes, no scopes or guards | 76% | 73% to 80% |
+
+**The paper's claim did not hold up in this small test.** The version that could rewrite its notebook freely learned the most. The careful version as first built learned nothing useful, and a revised one learned some. The reasons, and why this does not show the paper is wrong, are under [Stage 6](#stage-6-the-experiment).
+
+The full results page is [docs/index.html](docs/index.html): open it in a browser after cloning.
+
 ## The idea in one minute
 
 A capable AI model can still fail at a job because nobody told it the house rules. Retraining the model to teach it those rules is expensive. The cheaper option is to leave the model alone and write the lessons down as text it reads next time.
@@ -14,7 +29,19 @@ The paper's claim is about *where* and *how* each lesson gets written:
 - Each failure is assigned to exactly one section, and earns exactly one small edit.
 - A rule-checker, written as ordinary code, can refuse an edit that copies the answer, rewrites too much, or keeps changing the same place.
 
-The paper says this beats letting the AI rewrite its own notebook however it likes. AgentForge tests that by comparing three versions of the same agent on tasks none of them has seen: one with no notebook, one with the careful notebook, and one with an anything-goes notebook.
+The paper says this beats letting the AI rewrite its own notebook however it likes. AgentForge tests that by comparing versions of the same agent on tasks none of them has seen: one with no notebook, one with the careful notebook, and one with an anything-goes notebook.
+
+```mermaid
+flowchart LR
+    A[Attempt the task] --> B{Hidden tests pass?}
+    B -- yes --> G[Next task]
+    B -- no --> C[Reviewer: what kind of failure?]
+    C --> D[Propose one lesson]
+    D --> E{Guards accept it?}
+    E -- no, with a reason --> D
+    E -- yes --> F[Write it in the notebook]
+    F --> A
+```
 
 ## Status
 
@@ -25,7 +52,7 @@ The paper says this beats letting the AI rewrite its own notebook however it lik
 | 3. Scoped reflection | A reviewer that assigns each failure to one section | Done |
 | 4. Guards | The rule-checker that can refuse an edit | Done |
 | 5. Training | The learning loop, and the anything-goes version | Done |
-| 6. The experiment | The three-way comparison and a results page | Next |
+| 6. The experiment | The comparison on unseen tasks and a results page | Done |
 
 ## Setup
 
@@ -48,6 +75,8 @@ Commands so far:
 | `python -m agentforge reflect --run seed --guards` | The same, with each proposal checked by the guards and refused ones sent back for a rewrite |
 | `python -m agentforge train --arm emma` | Runs the learning loop and saves the notebook it produces (`--arm unguarded` for the anything-goes version) |
 | `python -m agentforge explain bp1` | Tells the story of one training task in plain language |
+| `python -m agentforge eval` | Runs every trained notebook on the unseen tasks, three times each (`--show` reprints saved results) |
+| `python -m agentforge report` | Builds the results page at `docs/index.html` |
 | `pytest` | Runs the automated checks (no model calls) |
 
 The agent's code runs on your machine in a throwaway folder with a timeout. That is isolation for convenience, not a security boundary.
@@ -279,6 +308,73 @@ Neither version created a specialist or changed the generalist's instructions.
 - One training run per version. Training is sequential and each step depends on the last, so a second run could go differently.
 - The anything-goes version is my own design for "no scopes, no guards". It is not one of the paper's baseline systems.
 - The limit of three revisions per task (the paper uses five) interacts with the change-of-strategy guard: with only three, the third can never be a skill edit if the first two were.
+
+### Stage 6: the experiment
+
+**What was built.** The evaluation, which runs each frozen notebook on the 30 held-out tasks with no reviewer and no writing to memory, and the results page generator.
+
+A fourth version was added before the run. Stage 5 showed the careful notebook's lessons were vague, so the careful version was trained a second time with one change: the reviewer was told to name the `kiln` function involved and state exactly what it does. Both careful versions are reported, so the fix is tested and not assumed.
+
+**What was run.** Four notebooks, 30 unseen tasks, 3 repeats each: 360 attempts.
+
+**Result.**
+
+| Version | Passed | Range over repeats | Tasks always passed | Tasks never passed | Tokens per attempt |
+|---|---|---|---|---|---|
+| No notebook | 34 of 90 (38%) | 33% to 43% | 7 | 14 | 6,400 |
+| Careful (EMMA) | 33 of 90 (37%) | 37% to 37% | 5 | 13 | 10,500 |
+| Careful, revised reviewer | 48 of 90 (53%) | 50% to 57% | 14 | 12 | 11,000 |
+| Anything-goes | 68 of 90 (76%) | 73% to 80% | 14 | 0 | 8,300 |
+
+Attempts passed, by unwritten rule (out of 15 each):
+
+| Version | Money in cents | Date ranges | Shelf slots | Rates | Merging | Product codes |
+|---|---|---|---|---|---|---|
+| No notebook | 9 | 9 | 2 | 0 | 2 | 12 |
+| Careful (EMMA) | 6 | 9 | 3 | 1 | 2 | 12 |
+| Careful, revised reviewer | 9 | 15 | 1 | 0 | 11 | 12 |
+| Anything-goes | 7 | 12 | 14 | 12 | 11 | 12 |
+
+The gaps between the anything-goes version and the others are much larger than the spread across repeats. The gap between the untrained agent and the first careful version is not.
+
+**Findings.**
+
+- The paper's claim did not hold up here. The anything-goes version passed twice as often as the untrained agent and well ahead of both careful versions.
+- The first careful version learned nothing useful. It scored the same as no notebook while using 65% more tokens per attempt. Its lessons were too vague to act on.
+- Asking the reviewer to be specific helped, and showed how much rides on a lesson being true. Where the revised notebook held a correct rule it passed nearly everything (date ranges 15 of 15, merging 11 of 15). Where it held a false one it passed almost nothing (rates 0 of 15, shelf slots 1 of 15). Its shelf skill says slots are numbered from zero, which is wrong.
+- No version can tell a true lesson from a false one. The guards check form. The only test of truth is the retry, and a retry can pass for unrelated reasons.
+- My reading of why anything-goes won, which this experiment does not prove:
+  - It learned more per failure. It could add a skill, a planning note and a retry hint after one mistake. The careful versions got one edit.
+  - It wrote facts about `kiln` plainly, often as planning notes that the controller sees on every task. The careful versions had to put facts in skills, which only help when the controller chooses to attach them.
+  - The change-of-strategy guard blocked the careful versions' third revision on most hard tasks, so those failures taught nothing. With three revisions per task instead of the paper's five, that guard bites much harder.
+- The anything-goes notebook is messier, as the paper predicts: 36 notes against 15, duplicates, and entries about one specific training task. At this scale the mess cost nothing measurable.
+
+**Why this does not show the paper is wrong.**
+
+- Scale. This was 18 training tasks in one narrow domain. The paper's limits exist to stop a notebook bloating and contradicting itself over long training on varied work. Eighteen tasks is not long enough for that to happen.
+- Sameness. Every unseen task here is built on one of the same six rules as the training tasks, so a task-specific or over-eager lesson is rarely punished. In varied work it would be.
+- Model. The workers are a small, cheap model and the reviewer a mid-sized one. The paper used stronger models in every role.
+- Fidelity. The prompts, guard thresholds, three-revision limit and the anything-goes design are my own. The paper has no code release that I could find, and its appendix values came from a summarised reading.
+- One training run per version. Training is sequential, so a second run could produce a different notebook.
+
+**What would test it properly.** More training tasks across several unrelated libraries; five revisions per task; repeated training runs; and a held-out set that includes rules the training tasks never touched.
+
+## Paper to code
+
+| In the paper | In this repo |
+|---|---|
+| Section 2: tasks, gate, frozen model | `tasks/`, `agentforge/gate.py` (`gate`), `agentforge/llm.py` |
+| Eq. 3: memory = (controller memory, agents, skills) | `agentforge/memory.py` (`Memory`, `Note`, `Agent`, `Skill`) |
+| Eq. 4: specialists inherit the generalist prompt | `Memory.prompt_for` |
+| Eq. 2 and Algorithm 2: controller step and rollout | `agentforge/rollout.py` (`select_notes`, `plan`, `run_agent`, `rollout`) |
+| Overflow decomposition | `rollout.py` (`decompose`) |
+| Table 1: scopes and actions | `agentforge/reflector.py` (`SCOPES`, `PAYLOADS`) |
+| Section 3.2: localise, classify, generalise, minimise | `reflector.py` (`_instructions`, `reflect`) |
+| Section 3.2.2: the five guards | `agentforge/guards.py` (one function per guard) |
+| Algorithm 3: guarded reflection with refusal feedback | `guards.py` (`reflect_guarded`) |
+| Algorithm 1: training loop and end-of-task controller update | `agentforge/train.py` (`train`), `reflector.py` (`propose_notes`) |
+| Section 5: evaluation on a frozen memory | `agentforge/evaluate.py` |
+| Not in the paper: the anything-goes comparison | `reflector.py` (`reflect_free`), `train.py` (`apply_free`) |
 
 ## How it differs from the paper
 

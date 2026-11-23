@@ -222,7 +222,7 @@ def cmd_train(args):
     actions = ", ".join(f"{n} {a}" for a, n in sorted(s["edits_by_action"].items())) or "none"
     print(f"Reviews: {s['reflections']}, producing {s['edits']} edits ({actions}); "
           f"{s['no_change']} reviews changed nothing.")
-    if args.arm == "emma":
+    if args.arm.startswith("emma"):
         guards = ", ".join(f"{n} {g}" for g, n in sorted(s["refusals_by_guard"].items())) or "none"
         print(f"Guard refusals: {guards}. Planning notes: {s['notes_added']} added, {s['notes_refused']} refused.")
     else:
@@ -246,6 +246,60 @@ def cmd_explain(args):
     if task is None:
         sys.exit(f"No task named {args.task}.")
     print(explain(task, [json.loads(line) for line in path.read_text().splitlines()], args.arm))
+
+
+def print_eval(results, usage=None):
+    from agentforge.evaluate import ARM_LABELS, summarize_arm
+
+    summaries = {arm: summarize_arm(rows) for arm, rows in results.items() if rows}
+    print(f"\n{'version':<28}{'pass rate':>10}{'range over repeats':>21}{'passes':>10}")
+    for arm, s in summaries.items():
+        spread = f"{100 * s['low']:.0f}% to {100 * s['high']:.0f}%"
+        print(f"{ARM_LABELS[arm]:<28}{100 * s['rate']:>9.0f}%{spread:>21}{s['passed']:>6}/{s['attempts']}")
+    print(f"\n{'passes by rule':<28}" + "".join(f"{f[:11]:>12}" for f in FAMILY_LABELS))
+    for arm, s in summaries.items():
+        cells = [f"{s['families'][f]['passed']}/{s['families'][f]['attempts']}" if f in s["families"] else "-"
+                 for f in FAMILY_LABELS]
+        print(f"{ARM_LABELS[arm]:<28}" + "".join(f"{c:>12}" for c in cells))
+    print(f"\n{'how each worked':<28}{'used a skill':>13}{'tested code':>13}{'avg rounds':>12}{'errors':>8}"
+          + ("  tokens" if usage else ""))
+    for arm, s in summaries.items():
+        tokens = f"  {usage[arm]['input'] + usage[arm]['output']:,}" if usage and arm in usage else ""
+        print(f"{ARM_LABELS[arm]:<28}{100 * s['skill_rate']:>12.0f}%{100 * s['ran_code_rate']:>12.0f}%"
+              f"{s['avg_rounds']:>12.1f}{s['errors']:>8}{tokens}")
+
+
+def cmd_eval(args):
+    """Run each frozen notebook on the held-out tasks, several times, and compare pass rates."""
+    from agentforge.evaluate import ARMS, evaluate, load_arms, load_results, load_usage
+
+    out = Path("runs/eval")
+    if not args.show:
+        need_key()
+        from agentforge.llm import LLM
+
+        arms = args.arms or [a for a in ARMS if ARMS[a] is None or Path(ARMS[a]).exists()]
+        missing = [a for a in arms if ARMS[a] and not Path(ARMS[a]).exists()]
+        if missing:
+            sys.exit(f"No trained notebook for: {', '.join(missing)}. Train those versions first.")
+        llms = {a: LLM(model=args.model, max_tokens_total=args.max_tokens_per_arm) for a in arms}
+        tasks = load_tasks("heldout")
+        print(f"Evaluating {', '.join(arms)} on {len(tasks)} held-out tasks, {args.repeats} times each "
+              f"({len(arms) * len(tasks) * args.repeats} attempts, {next(iter(llms.values())).model})...")
+        evaluate(llms, load_arms(arms), tasks, args.repeats, out, workers=args.workers)
+        # One usage file per eval run, so runs started at different times cannot overwrite each other.
+        (out / f"usage-{'-'.join(arms)}.json").write_text(json.dumps({a: llm.usage for a, llm in llms.items()}))
+    results = load_results(out)
+    if not results:
+        sys.exit("No evaluation results yet. Run `python -m agentforge eval` first.")
+    print_eval(results, load_usage(out))
+
+
+def cmd_report(args):
+    """Build the results page from the saved training and evaluation runs."""
+    from agentforge.report import build
+
+    print(f"Wrote {build(args.out)}. Open it in a browser.")
 
 
 def main(argv=None):
@@ -289,7 +343,7 @@ def main(argv=None):
     p.set_defaults(fn=cmd_reflect)
 
     p = sub.add_parser("train", help="run the learning loop and save the memory it produces")
-    p.add_argument("--arm", choices=["emma", "unguarded"], default="emma",
+    p.add_argument("--arm", choices=["emma", "emma-v2", "unguarded"], default="emma",
                    help="emma: one scoped, guarded edit per failure. unguarded: any edits, no checks")
     p.add_argument("--k", type=int, default=3, help="revisions allowed per task")
     p.add_argument("--limit", type=int, help="train on only the first N tasks")
@@ -300,8 +354,22 @@ def main(argv=None):
 
     p = sub.add_parser("explain", help="tell the story of one training task in plain language")
     p.add_argument("task")
-    p.add_argument("--arm", choices=["emma", "unguarded"], default="emma")
+    p.add_argument("--arm", choices=["emma", "emma-v2", "unguarded"], default="emma")
     p.set_defaults(fn=cmd_explain)
+
+    p = sub.add_parser("eval", help="compare the frozen notebooks on the held-out tasks")
+    p.add_argument("--arms", nargs="+", choices=["seed", "emma", "emma-v2", "unguarded"],
+                   help="versions to evaluate (default: every version that has been trained)")
+    p.add_argument("--repeats", type=int, default=3)
+    p.add_argument("--show", action="store_true", help="print the saved results without running anything")
+    p.add_argument("--model", help="worker model (default: AGENTFORGE_MODEL)")
+    p.add_argument("--workers", type=int, default=8)
+    p.add_argument("--max-tokens-per-arm", type=int, default=1_500_000)
+    p.set_defaults(fn=cmd_eval)
+
+    p = sub.add_parser("report", help="build the results page from the saved runs")
+    p.add_argument("--out", default="docs/index.html")
+    p.set_defaults(fn=cmd_report)
 
     args = parser.parse_args(argv)
     sys.exit(args.fn(args) or 0)
