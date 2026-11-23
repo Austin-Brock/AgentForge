@@ -1,0 +1,22 @@
+[project]
+name = "agentforge"
+version = "0.1.0"
+description = "An EMMA-style coding agent that learns from failed tests"
+requires-python = ">=3.11"
+dependencies = ["openai>=1.50"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+agentforge = "agentforge.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["agentforge", "kiln", "tasks"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
