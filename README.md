@@ -17,7 +17,7 @@ Four versions of the same agent were tested on 30 tasks none of them had seen, t
 
 **The paper's claim did not hold up in this small test.** The version that could rewrite its notebook freely learned the most. The careful version as first built learned nothing useful, and a revised one learned some. The reasons, and why this does not show the paper is wrong, are under [Stage 6](#stage-6-the-experiment).
 
-The full results page is [docs/index.html](docs/index.html): open it in a browser after cloning.
+**[See the full results page](https://austin-brock.github.io/AgentForge/)**, with a plain-language explainer, charts, each notebook's contents, and one mistake told start to finish.
 
 ## The idea in one minute
 

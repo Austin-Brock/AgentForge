@@ -102,7 +102,7 @@ About $4 of OpenAI usage in total, using a small model for the workers and a mid
 
 ## What to show
 
-- The results page: [docs/index.html](docs/index.html).
+- The results page: https://austin-brock.github.io/AgentForge/
 - One mistake told start to finish: `python -m agentforge explain bp1` (add `--arm unguarded` or `--arm emma-v2` for the other versions).
 - The final table without spending anything: `python -m agentforge eval --show`.
 - The saved evidence: everything under `runs/` (see the README section "Saved evidence").
